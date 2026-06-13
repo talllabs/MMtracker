@@ -236,6 +236,7 @@
     <div class="nav-item" onclick="showPage('tax',this)"><span class="nav-icon">💰</span> Tax Report</div>
     <div class="nav-item" onclick="showPage('clients',this)"><span class="nav-icon">👥</span> Clients</div>
     <div style="margin-top:auto;padding:16px 20px;border-top:1px solid var(--border);margin-top:32px;">
+      <div id="sync-status" style="font-size:11px;margin-bottom:10px;color:var(--text-muted);">Cloud sync active</div>
       <div style="color:var(--text-muted);font-size:11px;margin-bottom:8px;">Allyson LaBriola</div>
       <div style="color:var(--text-muted);font-size:11px;">Meaningful Marketing</div>
       <div style="color:var(--text-muted);font-size:11px;">Downingtown, PA</div>
@@ -509,14 +510,98 @@ function logout() {
   document.getElementById('pw-input').value = '';
 }
 
+// ─── JSONBIN ─────────────────────────────────────────────────────────────────
+const BIN_ID = '6a2d8e27da38895dfebadd45';
+const BIN_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
+const BIN_KEY = '$2a$10$8aMviRDRynnEOwgaAzTJTuzUVzwA4XUB9v6PlFgdPtgrQ1P.ECxPy';
+
+function setSyncStatus(msg, color) {
+  const el = document.getElementById('sync-status');
+  if (el) { el.textContent = msg; el.style.color = color || 'var(--text-muted)'; }
+}
+
+async function loadFromCloud() {
+  setSyncStatus('Loading…', 'var(--gold)');
+  try {
+    const res = await fetch(BIN_URL + '/latest', {
+      headers: { 'X-Access-Key': BIN_KEY }
+    });
+    if (!res.ok) throw new Error('fetch failed');
+    const data = await res.json();
+    const cloud = data.record?.invoices;
+    if (Array.isArray(cloud) && cloud.length > 0) {
+      invoices = cloud;
+      // merge any seed invoices not in cloud
+      SEED_INVOICES.forEach(s => {
+        if (!invoices.find(i => i.num === s.num)) {
+          invoices.push({...s, id: s.num, expense: 0, paymentMethod: 'zelle', payNotes: ''});
+        }
+      });
+      setSyncStatus('Synced ✓', 'var(--green)');
+    } else {
+      // cloud is empty — seed it
+      invoices = SEED_INVOICES.map(s => ({...s, id: s.num, expense: 0, paymentMethod: 'zelle', payNotes: ''}));
+      await saveToCloud();
+    }
+  } catch(e) {
+    setSyncStatus('Offline — using local cache', 'var(--orange)');
+    const stored = localStorage.getItem('mm_invoices');
+    if (stored) {
+      invoices = JSON.parse(stored);
+    } else {
+      invoices = SEED_INVOICES.map(s => ({...s, id: s.num, expense: 0, paymentMethod: 'zelle', payNotes: ''}));
+    }
+  }
+  localStorage.setItem('mm_invoices', JSON.stringify(invoices));
+}
+
+async function saveToCloud() {
+  setSyncStatus('Saving…', 'var(--gold)');
+  localStorage.setItem('mm_invoices', JSON.stringify(invoices));
+  try {
+    const res = await fetch(BIN_URL, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'X-Access-Key': BIN_KEY },
+      body: JSON.stringify({ invoices })
+    });
+    if (!res.ok) throw new Error('save failed');
+    setSyncStatus('Saved ✓', 'var(--green)');
+    setTimeout(() => setSyncStatus('Cloud sync active', 'var(--text-muted)'), 2000);
+  } catch(e) {
+    setSyncStatus('Saved locally (offline)', 'var(--orange)');
+  }
+}
+
 // ─── DATA ────────────────────────────────────────────────────────────────────
 const SEED_INVOICES = [
   // 2026
-  {num:'316',client:'Inspire Life Skills',amount:750,date:'2026-06-02',status:'paid',type:'retainer',desc:'May 2026 retainer'},
-  {num:'315',client:'Sigmund/Merschen',amount:4314.52,date:'2026-06-02',status:'paid',type:'retainer',desc:'May 2026 contractor services'},
-  {num:'314',client:'MT Sobek',amount:1500,date:'2026-05-15',status:'sent',due:'2026-06-15',type:'project',desc:'Project work'},
-  {num:'313',client:'Hacer Bien',amount:260,date:'2026-06-13',status:'draft',due:'2026-07-13',type:'project',desc:'Handbook/Document Formatting (4 hrs @ $65)'},
+  {num:'317',client:'Hacer Bien',amount:260,date:'2026-06-13',status:'draft',due:'2026-07-13',type:'project',desc:'Handbook/Document Formatting (4 hrs @ $65)'},
+  {num:'316',client:'Sigmund/Merschen',amount:5354.52,date:'2026-06-02',status:'paid',type:'retainer',desc:'May/June 2026 recurring'},
+  {num:'315',client:'Inspire Life Skills',amount:750,date:'2026-05-31',status:'paid',type:'retainer',desc:'May 2026 retainer'},
+  {num:'314',client:'Adventure International',amount:535,date:'2026-05-12',status:'paid',type:'project',desc:'Project services'},
+  {num:'313',client:'Inspire Life Skills',amount:750,date:'2026-04-04',status:'paid',type:'retainer',desc:'April 2026 retainer'},
+  {num:'312',client:'MT Sobek',amount:1500,date:'2026-06-17',status:'sent',due:'2026-07-17',type:'project',desc:'Project services'},
+  {num:'311',client:'Sigmund/Merschen',amount:4220,date:'2026-05-01',status:'paid',type:'retainer',desc:'May 2026 retainer'},
+  {num:'310',client:'Inspire Life Skills',amount:750,date:'2026-05-03',status:'paid',type:'retainer',desc:'May 2026 retainer'},
+  {num:'309',client:'Sigmund/Merschen',amount:1150,date:'2026-04-11',status:'paid',type:'project',desc:'Project services'},
+  {num:'308',client:'Pitcairn Island Tourism',amount:5819.97,date:'2026-04-08',status:'paid',type:'project',desc:'Project services'},
+  {num:'307',client:'MT Sobek',amount:1500,date:'2026-04-11',status:'paid',type:'project',desc:'Project services'},
+  {num:'306',client:'Sigmund/Merschen',amount:4220,date:'2026-04-08',status:'paid',type:'retainer',desc:'April 2026 retainer'},
+  {num:'305',client:'Inspire Life Skills',amount:750,date:'2026-03-28',status:'paid',type:'retainer',desc:'March 2026 retainer'},
+  {num:'304',client:'Inspire Life Skills',amount:750,date:'2026-03-07',status:'paid',type:'retainer',desc:'March 2026 retainer'},
+  {num:'303',client:'Sigmund/Merschen',amount:4140.27,date:'2026-03-07',status:'paid',type:'retainer',desc:'March 2026 retainer'},
+  {num:'302',client:'Inspire Life Skills',amount:750,date:'2026-02-10',status:'paid',type:'retainer',desc:'Feb 2026 retainer'},
+  {num:'301',client:'Chrome City',amount:195,date:'2026-02-08',status:'paid',type:'project',desc:'Project services'},
+  {num:'300',client:'Lobiko',amount:650,date:'2026-03-06',status:'paid',type:'project',desc:'Project services'},
+  {num:'299',client:'Sigmund/Merschen',amount:4160,date:'2026-02-10',status:'paid',type:'retainer',desc:'Feb 2026 retainer'},
+  {num:'298',client:'Adventure International',amount:250,date:'2026-02-06',status:'paid',type:'project',desc:'Project services'},
+  {num:'296',client:'Richard Bangs',amount:130,date:'2026-01-06',status:'paid',type:'project',desc:'Project services'},
+  {num:'294',client:'Pitcairn Island Tourism',amount:5959.52,date:'2026-01-04',status:'paid',type:'project',desc:'Project services'},
+  {num:'293',client:'Sigmund/Merschen',amount:8000,date:'2026-01-04',status:'paid',type:'retainer',desc:'Jan 2026 retainer'},
+  {num:'291',client:'Inspire Life Skills',amount:750,date:'2026-01-04',status:'paid',type:'retainer',desc:'Jan 2026 retainer'},
   // 2025
+  {num:'292',client:'Sigmund/Merschen',amount:4220,date:'2025-12-29',status:'paid',type:'retainer',desc:'Dec 2025 retainer'},
+  {num:'290',client:'Infinite Safari Adventures',amount:2640,date:'2025-12-16',status:'paid',type:'project',desc:'Project services'},
   {num:'265',client:'Sigmund/Merschen',amount:4480,date:'2025-04-03',status:'paid',type:'retainer',desc:'April 2025 retainer'},
   {num:'264',client:'Inspire Life Skills',amount:1200,date:'2025-04-03',status:'paid',type:'retainer',desc:'April 2025 retainer'},
   {num:'263',client:'Adventure International',amount:250,date:'2025-03-14',status:'paid',type:'project',desc:'Project services'},
@@ -690,7 +775,6 @@ const SEED_INVOICES = [
   {num:'66',client:'Museum Hack/ MNT',amount:1500,date:'2019-01-01',status:'paid',type:'retainer',desc:'Retainer'},
 ];
 
-// Load from localStorage or use seed
 let invoices = [];
 let currentPayInvoiceId = null;
 let currentReminderInvoiceId = null;
@@ -700,25 +784,7 @@ let taxYear = '2026';
 let currentDraftSubject = '';
 let currentDraftBody = '';
 
-function loadData() {
-  const stored = localStorage.getItem('mm_invoices');
-  if (stored) {
-    invoices = JSON.parse(stored);
-    // merge any seed invoices not already present
-    SEED_INVOICES.forEach(s => {
-      if (!invoices.find(i => i.num === s.num)) {
-        invoices.push({...s, id: s.num, expense: 0, paymentMethod: 'zelle', payNotes: ''});
-      }
-    });
-  } else {
-    invoices = SEED_INVOICES.map(s => ({...s, id: s.num, expense: 0, paymentMethod: 'zelle', payNotes: ''}));
-  }
-  save();
-}
-
-function save() {
-  localStorage.setItem('mm_invoices', JSON.stringify(invoices));
-}
+function save() { saveToCloud(); }
 
 function nextNum() {
   const nums = invoices.map(i => parseInt(i.num)).filter(n => !isNaN(n));
@@ -1137,11 +1203,10 @@ function renderClients() {
 }
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
-function init() {
-  loadData();
-  renderDashboard();
-  // set tax year to current year
+async function init() {
   taxYear = String(new Date().getFullYear());
+  await loadFromCloud();
+  renderDashboard();
 }
 </script>
 </body>
