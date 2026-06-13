@@ -236,6 +236,7 @@
     <div class="nav-item" onclick="showPage('tax',this)"><span class="nav-icon">💰</span> Tax Report</div>
     <div class="nav-item" onclick="showPage('clients',this)"><span class="nav-icon">👥</span> Clients</div>
     <div style="margin-top:auto;padding:16px 20px;border-top:1px solid var(--border);margin-top:32px;">
+      <div id="sync-status" style="font-size:11px;margin-bottom:10px;color:var(--text-muted);">Cloud sync active</div>
       <div style="color:var(--text-muted);font-size:11px;margin-bottom:8px;">Allyson LaBriola</div>
       <div style="color:var(--text-muted);font-size:11px;">Meaningful Marketing</div>
       <div style="color:var(--text-muted);font-size:11px;">Downingtown, PA</div>
@@ -509,6 +510,68 @@ function logout() {
   document.getElementById('pw-input').value = '';
 }
 
+// ─── JSONBIN ─────────────────────────────────────────────────────────────────
+const BIN_ID = '6a2d8e27da38895dfebadd45';
+const BIN_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
+const BIN_KEY = '$2a$10$8aMviRDRynnEOwgaAzTJTuzUVzwA4XUB9v6PlFgdPtgrQ1P.ECxPy';
+
+function setSyncStatus(msg, color) {
+  const el = document.getElementById('sync-status');
+  if (el) { el.textContent = msg; el.style.color = color || 'var(--text-muted)'; }
+}
+
+async function loadFromCloud() {
+  setSyncStatus('Loading…', 'var(--gold)');
+  try {
+    const res = await fetch(BIN_URL + '/latest', {
+      headers: { 'X-Access-Key': BIN_KEY }
+    });
+    if (!res.ok) throw new Error('fetch failed');
+    const data = await res.json();
+    const cloud = data.record?.invoices;
+    if (Array.isArray(cloud) && cloud.length > 0) {
+      invoices = cloud;
+      // merge any seed invoices not in cloud
+      SEED_INVOICES.forEach(s => {
+        if (!invoices.find(i => i.num === s.num)) {
+          invoices.push({...s, id: s.num, expense: 0, paymentMethod: 'zelle', payNotes: ''});
+        }
+      });
+      setSyncStatus('Synced ✓', 'var(--green)');
+    } else {
+      // cloud is empty — seed it
+      invoices = SEED_INVOICES.map(s => ({...s, id: s.num, expense: 0, paymentMethod: 'zelle', payNotes: ''}));
+      await saveToCloud();
+    }
+  } catch(e) {
+    setSyncStatus('Offline — using local cache', 'var(--orange)');
+    const stored = localStorage.getItem('mm_invoices');
+    if (stored) {
+      invoices = JSON.parse(stored);
+    } else {
+      invoices = SEED_INVOICES.map(s => ({...s, id: s.num, expense: 0, paymentMethod: 'zelle', payNotes: ''}));
+    }
+  }
+  localStorage.setItem('mm_invoices', JSON.stringify(invoices));
+}
+
+async function saveToCloud() {
+  setSyncStatus('Saving…', 'var(--gold)');
+  localStorage.setItem('mm_invoices', JSON.stringify(invoices));
+  try {
+    const res = await fetch(BIN_URL, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'X-Access-Key': BIN_KEY },
+      body: JSON.stringify({ invoices })
+    });
+    if (!res.ok) throw new Error('save failed');
+    setSyncStatus('Saved ✓', 'var(--green)');
+    setTimeout(() => setSyncStatus('Cloud sync active', 'var(--text-muted)'), 2000);
+  } catch(e) {
+    setSyncStatus('Saved locally (offline)', 'var(--orange)');
+  }
+}
+
 // ─── DATA ────────────────────────────────────────────────────────────────────
 const SEED_INVOICES = [
   // 2026
@@ -712,7 +775,6 @@ const SEED_INVOICES = [
   {num:'66',client:'Museum Hack/ MNT',amount:1500,date:'2019-01-01',status:'paid',type:'retainer',desc:'Retainer'},
 ];
 
-// Load from localStorage or use seed
 let invoices = [];
 let currentPayInvoiceId = null;
 let currentReminderInvoiceId = null;
@@ -722,25 +784,7 @@ let taxYear = '2026';
 let currentDraftSubject = '';
 let currentDraftBody = '';
 
-function loadData() {
-  const stored = localStorage.getItem('mm_invoices');
-  if (stored) {
-    invoices = JSON.parse(stored);
-    // merge any seed invoices not already present
-    SEED_INVOICES.forEach(s => {
-      if (!invoices.find(i => i.num === s.num)) {
-        invoices.push({...s, id: s.num, expense: 0, paymentMethod: 'zelle', payNotes: ''});
-      }
-    });
-  } else {
-    invoices = SEED_INVOICES.map(s => ({...s, id: s.num, expense: 0, paymentMethod: 'zelle', payNotes: ''}));
-  }
-  save();
-}
-
-function save() {
-  localStorage.setItem('mm_invoices', JSON.stringify(invoices));
-}
+function save() { saveToCloud(); }
 
 function nextNum() {
   const nums = invoices.map(i => parseInt(i.num)).filter(n => !isNaN(n));
@@ -1159,11 +1203,10 @@ function renderClients() {
 }
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
-function init() {
-  loadData();
-  renderDashboard();
-  // set tax year to current year
+async function init() {
   taxYear = String(new Date().getFullYear());
+  await loadFromCloud();
+  renderDashboard();
 }
 </script>
 </body>
