@@ -1,0 +1,1148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Meaningful Marketing — Invoice Tracker</title>
+<style>
+  :root {
+    --gold: #C9A84C;
+    --gold-light: #F0D98A;
+    --dark: #1a1a1a;
+    --mid: #2d2d2d;
+    --surface: #242424;
+    --border: #3a3a3a;
+    --text: #f0f0f0;
+    --text-muted: #999;
+    --green: #4caf7d;
+    --red: #e05252;
+    --orange: #e07a30;
+    --blue: #5b9bd5;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--dark); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; min-height: 100vh; }
+
+  /* LOGIN */
+  #login-screen {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100vh; background: var(--dark);
+  }
+  .login-box {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 48px 40px; width: 360px; text-align: center;
+  }
+  .login-logo { color: var(--gold); font-size: 22px; font-weight: 700; letter-spacing: 1px; margin-bottom: 6px; }
+  .login-sub { color: var(--text-muted); font-size: 12px; margin-bottom: 32px; }
+  .login-box input {
+    width: 100%; padding: 12px 16px; background: var(--mid); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text); font-size: 14px; margin-bottom: 16px;
+  }
+  .login-box input:focus { outline: none; border-color: var(--gold); }
+  .login-err { color: var(--red); font-size: 12px; margin-bottom: 12px; display: none; }
+  .btn-gold {
+    background: var(--gold); color: #111; border: none; border-radius: 8px;
+    padding: 12px 24px; font-weight: 700; cursor: pointer; font-size: 14px; width: 100%;
+    transition: background .15s;
+  }
+  .btn-gold:hover { background: var(--gold-light); }
+
+  /* APP LAYOUT */
+  #app { display: none; }
+  .sidebar {
+    width: 220px; background: var(--surface); border-right: 1px solid var(--border);
+    position: fixed; top: 0; left: 0; height: 100vh; padding: 24px 0; overflow-y: auto;
+  }
+  .sidebar-logo { padding: 0 20px 24px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+  .sidebar-logo .brand { color: var(--gold); font-size: 15px; font-weight: 700; }
+  .sidebar-logo .tagline { color: var(--text-muted); font-size: 11px; margin-top: 2px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px; padding: 10px 20px;
+    color: var(--text-muted); cursor: pointer; transition: all .15s; font-size: 13px;
+    border-left: 3px solid transparent;
+  }
+  .nav-item:hover { color: var(--text); background: var(--mid); }
+  .nav-item.active { color: var(--gold); border-left-color: var(--gold); background: rgba(201,168,76,.08); }
+  .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+  .main { margin-left: 220px; padding: 28px 32px; min-height: 100vh; }
+  .page { display: none; }
+  .page.active { display: block; }
+  .page-title { font-size: 22px; font-weight: 700; color: var(--gold); margin-bottom: 6px; }
+  .page-sub { color: var(--text-muted); font-size: 13px; margin-bottom: 28px; }
+
+  /* CARDS */
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-bottom: 28px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px;
+  }
+  .card-label { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .8px; margin-bottom: 8px; }
+  .card-value { font-size: 26px; font-weight: 700; color: var(--text); }
+  .card-value.gold { color: var(--gold); }
+  .card-value.green { color: var(--green); }
+  .card-value.red { color: var(--red); }
+  .card-value.orange { color: var(--orange); }
+  .card-sub { color: var(--text-muted); font-size: 11px; margin-top: 4px; }
+
+  /* TABLE */
+  .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .table-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 20px; border-bottom: 1px solid var(--border);
+  }
+  .table-title { font-weight: 600; font-size: 15px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: var(--mid); color: var(--text-muted); font-size: 11px; text-transform: uppercase;
+       letter-spacing: .6px; padding: 10px 16px; text-align: left; font-weight: 600; }
+  td { padding: 10px 16px; border-bottom: 1px solid var(--border); font-size: 13px; vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,.02); }
+  .badge {
+    display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600;
+  }
+  .badge-paid { background: rgba(76,175,125,.15); color: var(--green); }
+  .badge-sent { background: rgba(91,155,213,.15); color: var(--blue); }
+  .badge-draft { background: rgba(153,153,153,.15); color: var(--text-muted); }
+  .badge-overdue { background: rgba(224,82,82,.15); color: var(--red); }
+  .badge-partial { background: rgba(224,122,48,.15); color: var(--orange); }
+
+  /* BUTTONS */
+  .btn { border: none; border-radius: 6px; padding: 6px 14px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all .15s; }
+  .btn-sm { padding: 4px 10px; font-size: 11px; }
+  .btn-green { background: rgba(76,175,125,.2); color: var(--green); }
+  .btn-green:hover { background: rgba(76,175,125,.35); }
+  .btn-blue { background: rgba(91,155,213,.2); color: var(--blue); }
+  .btn-blue:hover { background: rgba(91,155,213,.35); }
+  .btn-red { background: rgba(224,82,82,.2); color: var(--red); }
+  .btn-red:hover { background: rgba(224,82,82,.35); }
+  .btn-ghost { background: var(--mid); color: var(--text-muted); }
+  .btn-ghost:hover { color: var(--text); }
+  .btn-outline { background: transparent; border: 1px solid var(--gold); color: var(--gold); }
+  .btn-outline:hover { background: rgba(201,168,76,.1); }
+  .flex-gap { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+  /* SEARCH / FILTER */
+  .filters { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+  .filters input, .filters select {
+    background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    padding: 8px 12px; border-radius: 8px; font-size: 13px;
+  }
+  .filters input:focus, .filters select:focus { outline: none; border-color: var(--gold); }
+  .filters input { flex: 1; min-width: 180px; }
+
+  /* FORM */
+  .form-group { margin-bottom: 18px; }
+  .form-group label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .6px; }
+  .form-group input, .form-group select, .form-group textarea {
+    width: 100%; background: var(--mid); border: 1px solid var(--border); color: var(--text);
+    padding: 10px 14px; border-radius: 8px; font-size: 14px; font-family: inherit;
+  }
+  .form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: var(--gold); }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .form-actions { display: flex; gap: 12px; margin-top: 24px; }
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.7);
+    z-index: 100; align-items: flex-start; justify-content: center; padding: 40px 20px; overflow-y: auto;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 28px; width: 100%; max-width: 580px; position: relative;
+  }
+  .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 20px; }
+  .modal-close { position: absolute; top: 16px; right: 16px; background: none; border: none; color: var(--text-muted); font-size: 20px; cursor: pointer; }
+  .modal-close:hover { color: var(--text); }
+
+  /* SECTIONS */
+  .section { margin-bottom: 32px; }
+  .section-title { font-size: 16px; font-weight: 600; margin-bottom: 14px; color: var(--text); }
+  .cash-flow-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 24px; }
+  .cf-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 18px;
+  }
+  .cf-card .label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .7px; margin-bottom: 6px; }
+  .cf-card .amount { font-size: 22px; font-weight: 700; }
+  .cf-card .count { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+  .divider { border: none; border-top: 1px solid var(--border); margin: 24px 0; }
+
+  /* TAX REPORT */
+  .tax-year-tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+  .tax-tab {
+    padding: 6px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600;
+    background: var(--mid); color: var(--text-muted); border: 1px solid var(--border);
+  }
+  .tax-tab.active { background: rgba(201,168,76,.15); color: var(--gold); border-color: var(--gold); }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+
+  /* NOTIFICATION */
+  .toast {
+    position: fixed; bottom: 24px; right: 24px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 14px 20px; z-index: 999; display: none;
+    font-size: 13px; box-shadow: 0 8px 32px rgba(0,0,0,.4); max-width: 320px;
+    border-left: 3px solid var(--green);
+  }
+  .toast.show { display: block; }
+
+  /* DRAFT PANEL */
+  .draft-panel {
+    background: var(--mid); border: 1px solid var(--border); border-radius: 8px;
+    padding: 16px; margin-top: 16px; font-size: 13px; line-height: 1.7; display: none;
+  }
+  .draft-panel.open { display: block; }
+  .draft-panel pre { white-space: pre-wrap; font-family: inherit; color: var(--text); }
+  .draft-subject { font-weight: 700; color: var(--gold); margin-bottom: 10px; }
+
+  /* EXPENSE BADGE */
+  .net-note { color: var(--text-muted); font-size: 11px; }
+
+  /* PAGINATION */
+  .pager { display: flex; gap: 8px; align-items: center; padding: 14px 20px; border-top: 1px solid var(--border); }
+  .pager-info { color: var(--text-muted); font-size: 12px; flex: 1; }
+  .pager-btn { background: var(--mid); border: 1px solid var(--border); color: var(--text-muted); border-radius: 6px; padding: 4px 12px; cursor: pointer; font-size: 12px; }
+  .pager-btn:hover { color: var(--text); }
+  .pager-btn:disabled { opacity: .4; cursor: default; }
+
+  @media(max-width:700px) {
+    .sidebar { display: none; }
+    .main { margin-left: 0; padding: 16px; }
+    .form-grid { grid-template-columns: 1fr; }
+    .two-col { grid-template-columns: 1fr; }
+    .cash-flow-cards { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">MM</div>
+    <div class="login-sub">Meaningful Marketing — Invoice Tracker</div>
+    <input type="password" id="pw-input" placeholder="Password" onkeydown="if(event.key==='Enter')doLogin()">
+    <div class="login-err" id="login-err">Incorrect password.</div>
+    <button class="btn-gold" onclick="doLogin()">Sign In</button>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div class="sidebar">
+    <div class="sidebar-logo">
+      <div class="brand">Meaningful Marketing</div>
+      <div class="tagline">Allyson LaBriola · 1099</div>
+    </div>
+    <div class="nav-item active" onclick="showPage('dashboard',this)"><span class="nav-icon">📊</span> Dashboard</div>
+    <div class="nav-item" onclick="showPage('invoices',this)"><span class="nav-icon">🧾</span> Invoices</div>
+    <div class="nav-item" onclick="showPage('create',this)"><span class="nav-icon">➕</span> New Invoice</div>
+    <div class="nav-item" onclick="showPage('cashflow',this)"><span class="nav-icon">📅</span> Cash Flow</div>
+    <div class="nav-item" onclick="showPage('tax',this)"><span class="nav-icon">💰</span> Tax Report</div>
+    <div class="nav-item" onclick="showPage('clients',this)"><span class="nav-icon">👥</span> Clients</div>
+    <div style="margin-top:auto;padding:16px 20px;border-top:1px solid var(--border);margin-top:32px;">
+      <div style="color:var(--text-muted);font-size:11px;margin-bottom:8px;">Allyson LaBriola</div>
+      <div style="color:var(--text-muted);font-size:11px;">Meaningful Marketing</div>
+      <div style="color:var(--text-muted);font-size:11px;">Downingtown, PA</div>
+      <button class="btn btn-ghost" style="margin-top:12px;width:100%;font-size:11px;" onclick="logout()">Sign Out</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <!-- DASHBOARD -->
+    <div class="page active" id="page-dashboard">
+      <div class="page-title">Dashboard</div>
+      <div class="page-sub" id="dash-date"></div>
+      <div class="cards" id="dash-cards"></div>
+      <div class="section">
+        <div class="section-title">Recent Activity</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>#</th><th>Client</th><th>Amount</th><th>Date</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody id="recent-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- INVOICES -->
+    <div class="page" id="page-invoices">
+      <div class="page-title">All Invoices</div>
+      <div class="page-sub">Complete history — 2019 through present</div>
+      <div class="filters">
+        <input type="text" id="inv-search" placeholder="Search client, invoice #, amount…" oninput="renderInvoices()">
+        <select id="inv-status" onchange="renderInvoices()">
+          <option value="">All Statuses</option>
+          <option value="paid">Paid</option>
+          <option value="sent">Sent</option>
+          <option value="draft">Draft</option>
+          <option value="overdue">Overdue</option>
+        </select>
+        <select id="inv-year" onchange="renderInvoices()">
+          <option value="">All Years</option>
+          <option value="2026">2026</option>
+          <option value="2025">2025</option>
+          <option value="2024">2024</option>
+          <option value="2023">2023</option>
+          <option value="2022">2022</option>
+          <option value="2021">2021</option>
+          <option value="2020">2020</option>
+          <option value="2019">2019</option>
+        </select>
+        <select id="inv-client" onchange="renderInvoices()">
+          <option value="">All Clients</option>
+        </select>
+        <button class="btn btn-outline btn-sm" onclick="showPage('create',document.querySelector('.nav-item:nth-child(3)'))">+ New Invoice</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>#</th><th>Client</th><th>Amount</th><th>Date</th><th>Due</th><th>Type</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="inv-tbody"></tbody>
+        </table>
+        <div class="pager">
+          <div class="pager-info" id="inv-pager-info"></div>
+          <button class="pager-btn" id="inv-prev" onclick="changePage(-1)">← Prev</button>
+          <button class="pager-btn" id="inv-next" onclick="changePage(1)">Next →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- CREATE -->
+    <div class="page" id="page-create">
+      <div class="page-title">New Invoice</div>
+      <div class="page-sub">Fill in the details below. Gmail draft will be generated automatically.</div>
+      <div class="table-wrap" style="padding:24px;max-width:620px;">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Client</label>
+            <input type="text" id="f-client" list="client-list" placeholder="Select or type client…">
+            <datalist id="client-list"></datalist>
+          </div>
+          <div class="form-group">
+            <label>Invoice #</label>
+            <input type="text" id="f-num" placeholder="Auto-assigned">
+          </div>
+        </div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Amount ($)</label>
+            <input type="number" id="f-amount" placeholder="0.00" step="0.01">
+          </div>
+          <div class="form-group">
+            <label>Invoice Type</label>
+            <select id="f-type">
+              <option value="project">Project (one-time)</option>
+              <option value="retainer">Retainer (monthly)</option>
+              <option value="deposit">Deposit (50%)</option>
+              <option value="final">Final Payment (50%)</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Invoice Date</label>
+            <input type="date" id="f-date">
+          </div>
+          <div class="form-group">
+            <label>Due Date</label>
+            <input type="date" id="f-due">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Description / Services</label>
+          <textarea id="f-desc" rows="3" placeholder="Brief description of services rendered…"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Partner / Sub-contractor Cost ($) <span style="color:var(--text-muted);font-size:11px;">— your net will be calculated</span></label>
+          <input type="number" id="f-expense" placeholder="0.00 (leave blank if none)" step="0.01">
+        </div>
+        <div class="form-group">
+          <label>Payment Method</label>
+          <select id="f-payment">
+            <option value="zelle">Zelle (949-307-4780)</option>
+            <option value="paypal">PayPal</option>
+            <option value="check">Check</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Status</label>
+          <select id="f-status">
+            <option value="draft">Draft</option>
+            <option value="sent">Sent</option>
+          </select>
+        </div>
+        <div class="form-actions">
+          <button class="btn-gold btn" onclick="saveInvoice()">Save Invoice</button>
+          <button class="btn btn-blue" onclick="saveAndDraft()">Save + Draft Gmail Email</button>
+          <button class="btn btn-ghost" onclick="showPage('invoices',document.querySelectorAll('.nav-item')[1])">Cancel</button>
+        </div>
+        <div class="draft-panel" id="draft-preview">
+          <div class="draft-subject" id="draft-subject-line"></div>
+          <pre id="draft-body-text"></pre>
+          <div style="margin-top:14px;display:flex;gap:8px;">
+            <button class="btn btn-green" onclick="copyDraft()">Copy to Clipboard</button>
+            <button class="btn btn-blue" onclick="openGmailDraft()">Open Gmail</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CASH FLOW -->
+    <div class="page" id="page-cashflow">
+      <div class="page-title">Cash Flow</div>
+      <div class="page-sub">Upcoming payments and overdue alerts</div>
+      <div class="cash-flow-cards" id="cf-cards"></div>
+      <div class="section">
+        <div class="section-title">Due in Next 15 Days</div>
+        <div class="table-wrap"><table><thead><tr><th>#</th><th>Client</th><th>Amount</th><th>Due Date</th><th>Days Left</th><th>Status</th><th>Actions</th></tr></thead><tbody id="cf-15"></tbody></table></div>
+      </div>
+      <div class="section">
+        <div class="section-title">Due in 16–30 Days</div>
+        <div class="table-wrap"><table><thead><tr><th>#</th><th>Client</th><th>Amount</th><th>Due Date</th><th>Days Left</th><th>Status</th><th>Actions</th></tr></thead><tbody id="cf-30"></tbody></table></div>
+      </div>
+      <div class="section">
+        <div class="section-title">Overdue — Action Required</div>
+        <div class="table-wrap"><table><thead><tr><th>#</th><th>Client</th><th>Amount</th><th>Due Date</th><th>Days Late</th><th>Actions</th></tr></thead><tbody id="cf-overdue"></tbody></table></div>
+      </div>
+    </div>
+
+    <!-- TAX -->
+    <div class="page" id="page-tax">
+      <div class="page-title">Tax Report</div>
+      <div class="page-sub">Schedule C income summary · Sole Proprietor · PA</div>
+      <div class="tax-year-tabs" id="tax-tabs"></div>
+      <div class="cards" id="tax-summary-cards"></div>
+      <div class="two-col">
+        <div class="section">
+          <div class="section-title">Income by Client</div>
+          <div class="table-wrap"><table><thead><tr><th>Client</th><th>Invoices</th><th>Gross</th><th>Partner Costs</th><th>Net</th></tr></thead><tbody id="tax-client-tbody"></tbody></table></div>
+        </div>
+        <div class="section">
+          <div class="section-title">Income by Quarter</div>
+          <div class="table-wrap"><table><thead><tr><th>Quarter</th><th>Gross Income</th><th>Net Income</th></tr></thead><tbody id="tax-q-tbody"></tbody></table></div>
+        </div>
+      </div>
+      <div style="margin-top:24px;display:flex;gap:12px;">
+        <button class="btn-gold btn" onclick="exportTaxCSV()">Download CSV</button>
+      </div>
+    </div>
+
+    <!-- CLIENTS -->
+    <div class="page" id="page-clients">
+      <div class="page-title">Client Directory</div>
+      <div class="page-sub">All clients with lifetime totals</div>
+      <div class="table-wrap"><table><thead><tr><th>Client</th><th>Total Invoiced</th><th>Total Paid</th><th>Invoices</th><th>Last Invoice</th></tr></thead><tbody id="clients-tbody"></tbody></table></div>
+    </div>
+  </div>
+</div>
+
+<!-- REMINDER MODAL -->
+<div class="modal-overlay" id="reminder-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('reminder-modal')">×</button>
+    <div class="modal-title">Send Payment Reminder</div>
+    <div id="reminder-invoice-info" style="margin-bottom:16px;padding:12px;background:var(--mid);border-radius:8px;font-size:13px;"></div>
+    <div class="form-group">
+      <label>To</label>
+      <input type="text" id="r-to" readonly style="opacity:.7;">
+    </div>
+    <div class="form-group">
+      <label>Subject</label>
+      <input type="text" id="r-subject">
+    </div>
+    <div class="form-group">
+      <label>Message</label>
+      <textarea id="r-body" rows="10"></textarea>
+    </div>
+    <div class="form-actions">
+      <button class="btn-gold btn" onclick="sendReminder()">Open in Gmail</button>
+      <button class="btn btn-ghost" onclick="closeModal('reminder-modal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- PAY MODAL -->
+<div class="modal-overlay" id="pay-modal">
+  <div class="modal" style="max-width:420px;">
+    <button class="modal-close" onclick="closeModal('pay-modal')">×</button>
+    <div class="modal-title">Mark as Paid</div>
+    <div id="pay-invoice-info" style="margin-bottom:16px;"></div>
+    <div class="form-group">
+      <label>Payment Date</label>
+      <input type="date" id="pay-date">
+    </div>
+    <div class="form-group">
+      <label>Payment Method</label>
+      <select id="pay-method">
+        <option>Zelle</option><option>PayPal</option><option>Check</option><option>Other</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Amount Received ($)</label>
+      <input type="number" id="pay-amount" step="0.01">
+    </div>
+    <div class="form-group">
+      <label>Notes</label>
+      <input type="text" id="pay-notes" placeholder="e.g. PayPal confirmation 4JA20943…">
+    </div>
+    <div class="form-actions">
+      <button class="btn-gold btn" onclick="confirmPay()">Mark Paid</button>
+      <button class="btn btn-ghost" onclick="closeModal('pay-modal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ─── AUTH ───────────────────────────────────────────────────────────────────
+const PASS = 'AccessDenied123!';
+function doLogin() {
+  const v = document.getElementById('pw-input').value;
+  if (v === PASS) {
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    init();
+  } else {
+    document.getElementById('login-err').style.display = 'block';
+  }
+}
+function logout() {
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('pw-input').value = '';
+}
+
+// ─── DATA ────────────────────────────────────────────────────────────────────
+const SEED_INVOICES = [
+  // 2026
+  {num:'316',client:'Inspire Life Skills',amount:750,date:'2026-06-02',status:'paid',type:'retainer',desc:'May 2026 retainer'},
+  {num:'315',client:'Sigmund/Merschen',amount:4314.52,date:'2026-06-02',status:'paid',type:'retainer',desc:'May 2026 contractor services'},
+  {num:'314',client:'MT Sobek',amount:1500,date:'2026-05-15',status:'sent',due:'2026-06-15',type:'project',desc:'Project work'},
+  {num:'313',client:'Hacer Bien',amount:260,date:'2026-06-13',status:'draft',due:'2026-07-13',type:'project',desc:'Handbook/Document Formatting (4 hrs @ $65)'},
+  // 2025
+  {num:'265',client:'Sigmund/Merschen',amount:4480,date:'2025-04-03',status:'paid',type:'retainer',desc:'April 2025 retainer'},
+  {num:'264',client:'Inspire Life Skills',amount:1200,date:'2025-04-03',status:'paid',type:'retainer',desc:'April 2025 retainer'},
+  {num:'263',client:'Adventure International',amount:250,date:'2025-03-14',status:'paid',type:'project',desc:'Project services'},
+  {num:'262',client:'Inspire Life Skills',amount:1200,date:'2025-02-28',status:'paid',type:'retainer',desc:'Feb 2025 retainer'},
+  {num:'261',client:'Sigmund/Merschen',amount:4220,date:'2025-02-28',status:'paid',type:'retainer',desc:'Feb 2025 retainer'},
+  {num:'259',client:'Pathwayz',amount:9900,date:'2025-02-14',status:'paid',type:'project',desc:'Project services'},
+  {num:'257',client:'Lobiko',amount:650,date:'2025-02-25',status:'paid',type:'project',desc:'Project services'},
+  {num:'256',client:'Pitcairn Island Tourism',amount:7500,date:'2025-01-31',status:'paid',type:'project',desc:'Project services'},
+  {num:'255',client:'Chrome City',amount:195,date:'2025-01-31',status:'paid',type:'project',desc:'Project services'},
+  {num:'254',client:'Sigmund/Merschen',amount:4220,date:'2025-01-31',status:'paid',type:'retainer',desc:'Jan 2025 retainer'},
+  {num:'253',client:'Pitcairn Island Tourism',amount:913.90,date:'2025-01-31',status:'paid',type:'project',desc:'Project services'},
+  {num:'239',client:'Inspire Life Skills',amount:1330,date:'2025-01-24',status:'paid',type:'project',desc:'Project services'},
+  // 2024
+  {num:'252',client:'Sigmund/Merschen',amount:4220,date:'2024-12-29',status:'paid',type:'retainer',desc:'Dec 2024 retainer'},
+  {num:'251',client:'Pitcairn Island Tourism',amount:1360.50,date:'2024-12-21',status:'paid',type:'project',desc:'Project services'},
+  {num:'249',client:'Pitcairn Island Tourism',amount:4800,date:'2024-12-10',status:'paid',type:'project',desc:'Project services'},
+  {num:'248',client:'Sigmund/Merschen',amount:4220,date:'2024-11-30',status:'paid',type:'retainer',desc:'Nov 2024 retainer'},
+  {num:'247',client:'Adventure International',amount:250,date:'2024-11-23',status:'paid',type:'project',desc:'Project services'},
+  {num:'246',client:'bestowal',amount:202.23,date:'2024-11-14',status:'paid',type:'project',desc:'Project services'},
+  {num:'245',client:'Chrome City',amount:195,date:'2024-11-20',status:'paid',type:'project',desc:'Project services'},
+  {num:'244',client:'Pitcairn Island Tourism',amount:-558.84,date:'2024-11-02',status:'paid',type:'project',desc:'Overpayment adjustment'},
+  {num:'243',client:'Pitcairn Island Tourism',amount:7500,date:'2024-11-02',status:'paid',type:'project',desc:'Project services'},
+  {num:'242',client:'Chrome City',amount:227.50,date:'2024-10-31',status:'paid',type:'project',desc:'Project services'},
+  {num:'241',client:'Adventure International',amount:500,date:'2024-10-29',status:'paid',type:'project',desc:'Project services'},
+  {num:'240',client:'Sigmund/Merschen',amount:4220,date:'2024-10-29',status:'paid',type:'retainer',desc:'Oct 2024 retainer'},
+  {num:'238',client:'Inspire Life Skills',amount:1200,date:'2024-10-28',status:'paid',type:'retainer',desc:'Oct 2024 retainer'},
+  {num:'236',client:'Well-Crafted Collaborative',amount:65,date:'2024-10-18',status:'draft',type:'project',desc:'Draft'},
+  {num:'237',client:'Method Moving',amount:195,date:'2024-10-14',status:'draft',type:'project',desc:'Draft'},
+  {num:'235',client:'Sigmund/Merschen',amount:4230,date:'2024-09-29',status:'paid',type:'retainer',desc:'Sep 2024 retainer'},
+  {num:'234',client:'Well-Crafted Collaborative',amount:292.50,date:'2024-09-15',status:'paid',type:'project',desc:'Project services'},
+  {num:'233',client:'Sigmund/Merschen',amount:4220,date:'2024-08-31',status:'paid',type:'retainer',desc:'Aug 2024 retainer'},
+  {num:'232',client:'Chrome City',amount:2000,date:'2024-08-26',status:'paid',type:'project',desc:'Project services'},
+  {num:'231',client:'Well-Crafted Collaborative',amount:669.45,date:'2024-08-12',status:'paid',type:'project',desc:'Project services'},
+  {num:'230',client:'Pitcairn Island Tourism',amount:7500,date:'2024-08-02',status:'paid',type:'project',desc:'Project services'},
+  {num:'229',client:'Pitcairn Island Tourism',amount:459.68,date:'2024-08-02',status:'paid',type:'project',desc:'Project services'},
+  {num:'228',client:'Sigmund/Merschen',amount:4320,date:'2024-08-01',status:'paid',type:'retainer',desc:'Aug 2024 retainer'},
+  {num:'227',client:'Chrome City',amount:455,date:'2024-07-11',status:'paid',type:'project',desc:'Project services'},
+  {num:'226',client:'Sigmund/Merschen',amount:9000,date:'2024-07-03',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'225',client:'Sigmund/Merschen',amount:2400,date:'2024-06-26',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'224',client:'Chrome City',amount:617.50,date:'2024-05-29',status:'paid',type:'project',desc:'Project services'},
+  {num:'223',client:'Richard Bangs',amount:1500,date:'2024-05-31',status:'paid',type:'project',desc:'Project services'},
+  {num:'222',client:'Pitcairn Island Tourism',amount:1770.78,date:'2024-05-15',status:'paid',type:'project',desc:'Project services'},
+  {num:'220',client:'Pitcairn Island Tourism',amount:6401,date:'2024-05-14',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'221',client:'Sigmund/Merschen',amount:1220,date:'2024-04-30',status:'paid',type:'retainer',desc:'April 2024 retainer'},
+  {num:'219',client:'Jackie Gaffaney',amount:122.50,date:'2024-04-01',status:'paid',type:'project',desc:'Project services'},
+  {num:'217',client:'Sigmund/Merschen',amount:10220,date:'2024-03-31',status:'paid',type:'retainer',desc:'March 2024 retainer'},
+  {num:'216',client:'Laura Hubber',amount:1560,date:'2024-04-18',status:'draft',type:'project',desc:'Draft'},
+  {num:'215',client:'Richard Bangs',amount:1950,date:'2024-04-09',status:'paid',type:'project',desc:'Project services'},
+  {num:'213',client:'Pitcairn Island Tourism',amount:916.20,date:'2024-02-15',status:'paid',type:'project',desc:'Project services'},
+  {num:'212',client:'Sigmund/Merschen',amount:1528.50,date:'2024-03-01',status:'paid',type:'retainer',desc:'March 2024 retainer'},
+  {num:'211',client:'Pitcairn Island Tourism',amount:5733,date:'2024-02-15',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'214',client:'Sigmund/Merschen',amount:1280,date:'2024-01-31',status:'paid',type:'retainer',desc:'Jan 2024 retainer'},
+  {num:'210',client:'Sigmund/Merschen',amount:1251,date:'2024-01-03',status:'paid',type:'retainer',desc:'Jan 2024 retainer'},
+  {num:'208',client:'Richard Bangs',amount:682.50,date:'2024-01-12',status:'paid',type:'project',desc:'Project services'},
+  {num:'205',client:'Lobiko',amount:1541.67,date:'2024-02-29',status:'paid',type:'project',desc:'Project services'},
+  // 2023
+  {num:'207',client:'Sigmund/Merschen',amount:1200,date:'2023-11-30',status:'paid',type:'retainer',desc:'Nov 2023 retainer'},
+  {num:'206',client:'Pitcairn Island Tourism',amount:299.56,date:'2023-11-01',status:'paid',type:'project',desc:'Project services'},
+  {num:'204',client:'Lobiko',amount:925,date:'2023-11-01',status:'paid',type:'project',desc:'Project services'},
+  {num:'203',client:'Pitcairn Island Tourism',amount:5723,date:'2023-11-01',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'202',client:'Sigmund/Merschen',amount:10500,date:'2023-10-02',status:'paid',type:'retainer',desc:'Oct 2023 retainer'},
+  {num:'201',client:'Pitcairn Island Tourism',amount:49.34,date:'2023-07-31',status:'paid',type:'project',desc:'Project services'},
+  {num:'200',client:'Pitcairn Island Tourism',amount:5614,date:'2023-07-31',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'198',client:'Chrome City',amount:187.50,date:'2023-05-09',status:'paid',type:'project',desc:'Project services'},
+  {num:'197',client:'Sigmund/Merschen',amount:560,date:'2023-06-08',status:'paid',type:'project',desc:'Project services'},
+  {num:'196',client:'Sigmund/Merschen',amount:4500,date:'2023-06-08',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'195',client:'Pitcairn Island Tourism',amount:5614,date:'2023-05-03',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'194',client:'Sigmund/Merschen',amount:9220,date:'2023-03-31',status:'paid',type:'retainer',desc:'March 2023 retainer'},
+  {num:'193',client:'San Diego Magazine',amount:2000,date:'2023-06-08',status:'paid',type:'project',desc:'Project services'},
+  {num:'192',client:'JNTO Project',amount:3150,date:'2023-02-28',status:'paid',type:'project',desc:'Project services'},
+  {num:'191',client:'bestowal',amount:150,date:'2023-03-01',status:'paid',type:'project',desc:'Project services'},
+  {num:'190',client:'MMGY',amount:1200,date:'2023-02-11',status:'paid',type:'project',desc:'Project services'},
+  {num:'189',client:'Sigmund/Merschen',amount:7500,date:'2023-06-08',status:'paid',type:'project',desc:'Project services'},
+  {num:'188',client:'Pitcairn Island Tourism',amount:4984.08,date:'2023-05-03',status:'paid',type:'project',desc:'Project services'},
+  {num:'187',client:'Adventures & Retreats',amount:1500,date:'2023-01-30',status:'paid',type:'project',desc:'Project services'},
+  {num:'186',client:'Unicube',amount:450,date:'2023-01-30',status:'paid',type:'project',desc:'Project services'},
+  {num:'185',client:'Pitcairn Island Tourism',amount:5490,date:'2023-01-30',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'184',client:'Pitcairn Island Tourism',amount:1278.10,date:'2023-01-30',status:'paid',type:'project',desc:'Project services'},
+  {num:'183',client:'MMGY',amount:1462.50,date:'2023-01-05',status:'paid',type:'project',desc:'Project services'},
+  {num:'182',client:'Sigmund/Merschen',amount:9000,date:'2023-01-05',status:'paid',type:'retainer',desc:'Jan 2023 retainer'},
+  // 2022
+  {num:'181',client:'bestowal',amount:75,date:'2022-12-14',status:'paid',type:'project',desc:'Project services'},
+  {num:'180',client:'bestowal',amount:525,date:'2022-11-23',status:'paid',type:'project',desc:'Project services'},
+  {num:'179',client:'Pitcairn Island Tourism',amount:1158.61,date:'2022-11-08',status:'paid',type:'project',desc:'Project services'},
+  {num:'178',client:'MMGY',amount:2025,date:'2022-10-17',status:'paid',type:'project',desc:'Project services'},
+  {num:'177',client:'Pitcairn Island Tourism',amount:5490,date:'2022-11-08',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'176',client:'bestowal',amount:4000,date:'2022-10-03',status:'paid',type:'project',desc:'Project services'},
+  {num:'175',client:'bestowal',amount:1275,date:'2022-10-01',status:'paid',type:'project',desc:'Project services'},
+  {num:'174',client:'Sigmund/Merschen',amount:9000,date:'2022-09-30',status:'paid',type:'retainer',desc:'Sep 2022 retainer'},
+  {num:'173',client:'Pitcairn Island Tourism',amount:6823.85,date:'2022-08-05',status:'paid',type:'project',desc:'Project services'},
+  {num:'172',client:'Pitcairn Island Tourism',amount:5490,date:'2022-08-05',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'171',client:'Sigmund/Merschen',amount:9000,date:'2022-06-27',status:'paid',type:'retainer',desc:'Jun 2022 retainer'},
+  {num:'170',client:'MMGY',amount:4912.50,date:'2022-06-17',status:'paid',type:'project',desc:'Project services'},
+  {num:'169',client:'bestowal',amount:1210,date:'2022-09-09',status:'paid',type:'project',desc:'Project services'},
+  {num:'168',client:'Pitcairn Island Tourism',amount:267.80,date:'2022-04-30',status:'paid',type:'project',desc:'Project services'},
+  {num:'167',client:'Pitcairn Island Tourism',amount:5490,date:'2022-04-30',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'166',client:'Sigmund/Merschen',amount:9000,date:'2022-03-31',status:'paid',type:'retainer',desc:'Mar 2022 retainer'},
+  {num:'164',client:'Pitcairn Island Tourism',amount:471.47,date:'2022-01-26',status:'paid',type:'project',desc:'Project services'},
+  {num:'163',client:'Pitcairn Island Tourism',amount:5490,date:'2022-01-25',status:'paid',type:'retainer',desc:'Retainer'},
+  // 2021
+  {num:'162',client:'Sigmund/Merschen',amount:9000,date:'2021-12-28',status:'paid',type:'retainer',desc:'Dec 2021 retainer'},
+  {num:'161',client:'Pitcairn Island Tourism',amount:1126.78,date:'2021-10-29',status:'paid',type:'project',desc:'Project services'},
+  {num:'160',client:'Pitcairn Island Tourism',amount:5485.92,date:'2021-10-29',status:'paid',type:'project',desc:'Project services'},
+  {num:'157',client:'Sigmund/Merschen',amount:9000,date:'2021-09-30',status:'paid',type:'retainer',desc:'Sep 2021 retainer'},
+  {num:'156',client:'Pitcairn Island Tourism',amount:304.08,date:'2021-07-22',status:'paid',type:'project',desc:'Project services'},
+  {num:'155',client:'Pitcairn Island Tourism',amount:5490,date:'2021-07-21',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'154',client:'Sigmund/Merschen',amount:9000,date:'2021-06-30',status:'paid',type:'retainer',desc:'Jun 2021 retainer'},
+  {num:'152',client:'Pitcairn Island Tourism',amount:245.35,date:'2021-04-30',status:'paid',type:'project',desc:'Project services'},
+  {num:'151',client:'Pitcairn Island Tourism',amount:5490,date:'2021-04-30',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'150',client:'MMGY / NT',amount:1000,date:'2021-04-16',status:'paid',type:'project',desc:'Project services'},
+  {num:'149',client:'Sigmund/Merschen',amount:3000,date:'2021-03-28',status:'paid',type:'retainer',desc:'Mar 2021 retainer'},
+  {num:'148',client:'Sigmund/Merschen',amount:3000,date:'2021-02-28',status:'paid',type:'retainer',desc:'Feb 2021 retainer'},
+  {num:'147',client:'Sigmund/Merschen',amount:3000,date:'2021-01-31',status:'paid',type:'retainer',desc:'Jan 2021 retainer'},
+  {num:'146',client:'Pitcairn Island Tourism',amount:38.44,date:'2021-01-18',status:'paid',type:'project',desc:'Project services'},
+  {num:'145',client:'Pitcairn Island Tourism',amount:5490,date:'2021-01-18',status:'paid',type:'retainer',desc:'Retainer'},
+  // 2020
+  {num:'144',client:'Sigmund/Merschen',amount:3500,date:'2020-11-04',status:'paid',type:'retainer',desc:'Nov 2020 retainer'},
+  {num:'143',client:'Pitcairn Island Tourism',amount:5490,date:'2020-10-20',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'142',client:'Pitcairn Island Tourism',amount:153.09,date:'2020-10-19',status:'paid',type:'project',desc:'Project services'},
+  {num:'141',client:'Pitcairn Island Tourism',amount:5490,date:'2020-07-23',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'139',client:'Pitcairn Island Tourism',amount:5490,date:'2020-06-16',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'138',client:'Museum Hack/ MNT',amount:1800,date:'2020-06-01',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'137',client:'Sigmund/Merschen',amount:250,date:'2020-05-21',status:'paid',type:'project',desc:'Project services'},
+  {num:'136',client:'Sigmund/Merschen',amount:3500,date:'2020-05-20',status:'paid',type:'retainer',desc:'May 2020 retainer'},
+  {num:'135',client:'Museum Hack/ MNT',amount:3600,date:'2020-05-01',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'133',client:'Pitcairn Island Tourism',amount:480,date:'2020-04-23',status:'paid',type:'project',desc:'Project services'},
+  {num:'131',client:'Pitcairn Island Tourism',amount:266.16,date:'2020-04-09',status:'paid',type:'project',desc:'Project services'},
+  {num:'130',client:'Pitcairn Island Tourism',amount:5490,date:'2020-04-09',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'121',client:'Museum Hack/ MNT',amount:3600,date:'2020-04-01',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'119',client:'Adventure International',amount:400,date:'2020-03-01',status:'paid',type:'project',desc:'Project services'},
+  {num:'117',client:'Museum Hack/ MNT',amount:3600,date:'2020-03-01',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'116',client:'Museum Hack/ MNT',amount:900,date:'2020-02-14',status:'paid',type:'project',desc:'Project services'},
+  {num:'114',client:'Realistic Asia',amount:275,date:'2020-02-03',status:'paid',type:'project',desc:'Project services'},
+  {num:'113',client:'Museum Hack/ MNT',amount:1800,date:'2020-02-01',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'111',client:'Adventure Portfolio',amount:400,date:'2020-01-31',status:'paid',type:'project',desc:'Project services'},
+  {num:'110',client:'Adventure International',amount:400,date:'2020-01-31',status:'paid',type:'project',desc:'Project services'},
+  {num:'109',client:'Pitcairn Island Tourism',amount:5490,date:'2020-01-23',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'106',client:'Museum Hack/ MNT',amount:1800,date:'2020-01-01',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'105',client:'Realistic Asia',amount:576.26,date:'2020-01-04',status:'paid',type:'project',desc:'Project services'},
+  // 2019
+  {num:'104',client:'Adventure International',amount:400,date:'2019-12-31',status:'paid',type:'project',desc:'Project services'},
+  {num:'103',client:'Adventure Portfolio',amount:400,date:'2019-12-31',status:'paid',type:'project',desc:'Project services'},
+  {num:'102',client:'Museum Hack/ MNT',amount:1800,date:'2019-12-01',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'101',client:'Adventure International',amount:400,date:'2019-11-26',status:'paid',type:'project',desc:'Project services'},
+  {num:'100',client:'Adventure Portfolio',amount:400,date:'2019-11-26',status:'paid',type:'project',desc:'Project services'},
+  {num:'99',client:'Museum Hack/ MNT',amount:1800,date:'2019-11-01',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'98',client:'Adventure Portfolio',amount:400,date:'2019-10-31',status:'paid',type:'project',desc:'Project services'},
+  {num:'97',client:'Adventure International',amount:400,date:'2019-10-31',status:'paid',type:'project',desc:'Project services'},
+  {num:'95',client:'Pitcairn Island Tourism',amount:5490,date:'2019-10-17',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'94',client:'Pitcairn Island Tourism',amount:1806.45,date:'2019-10-17',status:'paid',type:'project',desc:'Project services'},
+  {num:'91',client:'Museum Hack/ MNT',amount:1800,date:'2019-10-01',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'93',client:'Adventure International',amount:400,date:'2019-09-30',status:'paid',type:'project',desc:'Project services'},
+  {num:'92',client:'Adventure Portfolio',amount:400,date:'2019-09-30',status:'paid',type:'project',desc:'Project services'},
+  {num:'88',client:'Museum Hack/ MNT',amount:1800,date:'2019-09-01',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'86',client:'Adventure Portfolio',amount:400,date:'2019-08-30',status:'paid',type:'project',desc:'Project services'},
+  {num:'85',client:'Adventure International',amount:400,date:'2019-08-30',status:'paid',type:'project',desc:'Project services'},
+  {num:'90',client:'Adventure Portfolio',amount:800,date:'2019-08-01',status:'paid',type:'project',desc:'Project services'},
+  {num:'89',client:'Adventure International',amount:800,date:'2019-08-01',status:'paid',type:'project',desc:'Project services'},
+  {num:'83',client:'Museum Hack/ MNT',amount:1800,date:'2019-08-01',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'82',client:'Pitcairn Island Tourism',amount:493.64,date:'2019-07-25',status:'paid',type:'project',desc:'Project services'},
+  {num:'80',client:'Pitcairn Island Tourism',amount:5490,date:'2019-07-23',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'79',client:'Museum Hack/ MNT',amount:1800,date:'2019-07-01',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'75',client:'Museum Hack/ MNT',amount:1800,date:'2019-06-01',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'74',client:'Pitcairn Island Tourism',amount:5490,date:'2019-04-15',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'73',client:'Pitcairn Island Tourism',amount:3613.48,date:'2019-04-15',status:'paid',type:'project',desc:'Project services'},
+  {num:'72',client:'Museum Hack/ MNT',amount:1500,date:'2019-04-01',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'70',client:'Museum Hack/ MNT',amount:1500,date:'2019-03-01',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'69',client:'Museum Hack/ MNT',amount:1500,date:'2019-02-01',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'68',client:'Pitcairn Island Tourism',amount:6472.38,date:'2019-01-28',status:'paid',type:'retainer',desc:'Retainer'},
+  {num:'67',client:'Museum Hack/ MNT',amount:43.80,date:'2019-01-18',status:'paid',type:'project',desc:'Project services'},
+  {num:'66',client:'Museum Hack/ MNT',amount:1500,date:'2019-01-01',status:'paid',type:'retainer',desc:'Retainer'},
+];
+
+// Load from localStorage or use seed
+let invoices = [];
+let currentPayInvoiceId = null;
+let currentReminderInvoiceId = null;
+let invPage = 1;
+const INV_PER_PAGE = 25;
+let taxYear = '2026';
+let currentDraftSubject = '';
+let currentDraftBody = '';
+
+function loadData() {
+  const stored = localStorage.getItem('mm_invoices');
+  if (stored) {
+    invoices = JSON.parse(stored);
+    // merge any seed invoices not already present
+    SEED_INVOICES.forEach(s => {
+      if (!invoices.find(i => i.num === s.num)) {
+        invoices.push({...s, id: s.num, expense: 0, paymentMethod: 'zelle', payNotes: ''});
+      }
+    });
+  } else {
+    invoices = SEED_INVOICES.map(s => ({...s, id: s.num, expense: 0, paymentMethod: 'zelle', payNotes: ''}));
+  }
+  save();
+}
+
+function save() {
+  localStorage.setItem('mm_invoices', JSON.stringify(invoices));
+}
+
+function nextNum() {
+  const nums = invoices.map(i => parseInt(i.num)).filter(n => !isNaN(n));
+  return String(Math.max(...nums) + 1);
+}
+
+// ─── UTILS ───────────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const fmt = n => '$' + (+(n||0)).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+const fmtDate = d => d ? new Date(d + 'T12:00:00').toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'}) : '—';
+const today = () => new Date().toISOString().slice(0,10);
+function daysDiff(dateStr) {
+  const t = new Date(today() + 'T00:00:00');
+  const d = new Date(dateStr + 'T00:00:00');
+  return Math.round((d - t) / 86400000);
+}
+function statusBadge(inv) {
+  if (inv.status === 'paid') return '<span class="badge badge-paid">Paid</span>';
+  if (inv.status === 'draft') return '<span class="badge badge-draft">Draft</span>';
+  if (inv.status === 'sent') {
+    if (inv.due && daysDiff(inv.due) < 0) return '<span class="badge badge-overdue">Overdue</span>';
+    return '<span class="badge badge-sent">Sent</span>';
+  }
+  return '<span class="badge badge-draft">' + inv.status + '</span>';
+}
+function showToast(msg, color) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.style.borderLeftColor = color || 'var(--green)';
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+function closeModal(id) { $(id).classList.remove('open'); }
+function openModal(id) { $(id).classList.add('open'); }
+
+// ─── NAVIGATION ──────────────────────────────────────────────────────────────
+function showPage(id, el) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  $('page-' + id).classList.add('active');
+  if (el) el.classList.add('active');
+  if (id === 'dashboard') renderDashboard();
+  if (id === 'invoices') renderInvoices();
+  if (id === 'cashflow') renderCashFlow();
+  if (id === 'tax') renderTax();
+  if (id === 'clients') renderClients();
+  if (id === 'create') initCreate();
+}
+
+// ─── DASHBOARD ───────────────────────────────────────────────────────────────
+function renderDashboard() {
+  const now = new Date();
+  $('dash-date').textContent = now.toLocaleDateString('en-US', {weekday:'long', year:'numeric', month:'long', day:'numeric'});
+
+  const allPaid = invoices.filter(i => i.status === 'paid' && i.amount > 0);
+  const yearStr = String(now.getFullYear());
+  const ytd = allPaid.filter(i => i.date && i.date.startsWith(yearStr));
+  const unpaid = invoices.filter(i => i.status === 'sent');
+  const overdue = invoices.filter(i => i.status === 'sent' && i.due && daysDiff(i.due) < 0);
+
+  $('dash-cards').innerHTML = `
+    <div class="card"><div class="card-label">YTD Income (${yearStr})</div><div class="card-value gold">${fmt(ytd.reduce((s,i)=>s+i.amount,0))}</div><div class="card-sub">${ytd.length} paid invoices</div></div>
+    <div class="card"><div class="card-label">All-Time Income</div><div class="card-value">${fmt(allPaid.reduce((s,i)=>s+i.amount,0))}</div><div class="card-sub">Since 2019</div></div>
+    <div class="card"><div class="card-label">Awaiting Payment</div><div class="card-value orange">${fmt(unpaid.reduce((s,i)=>s+i.amount,0))}</div><div class="card-sub">${unpaid.length} invoice${unpaid.length!==1?'s':''}</div></div>
+    <div class="card"><div class="card-label">Overdue</div><div class="card-value red">${overdue.length}</div><div class="card-sub">${overdue.length ? 'Action needed' : 'All clear!'}</div></div>
+    <div class="card"><div class="card-label">Total Invoices</div><div class="card-value">${invoices.length}</div><div class="card-sub">All time</div></div>
+  `;
+
+  const recent = [...invoices].sort((a,b) => (b.date||'').localeCompare(a.date||'')).slice(0,12);
+  $('recent-tbody').innerHTML = recent.map(inv => `
+    <tr>
+      <td><strong>#${inv.num}</strong></td>
+      <td>${inv.client}</td>
+      <td><strong>${fmt(inv.amount)}</strong></td>
+      <td>${fmtDate(inv.date)}</td>
+      <td>${statusBadge(inv)}</td>
+      <td>${actionBtns(inv)}</td>
+    </tr>`).join('');
+}
+
+function actionBtns(inv) {
+  const btns = [];
+  if (inv.status !== 'paid') {
+    btns.push(`<button class="btn btn-green btn-sm" onclick="openPayModal('${inv.num}')">Mark Paid</button>`);
+  }
+  if (inv.status === 'sent' && inv.due && daysDiff(inv.due) < 0) {
+    btns.push(`<button class="btn btn-red btn-sm" onclick="openReminderModal('${inv.num}')">Send Reminder</button>`);
+  } else if (inv.status === 'sent') {
+    btns.push(`<button class="btn btn-ghost btn-sm" onclick="openReminderModal('${inv.num}')">Follow Up</button>`);
+  }
+  return btns.join(' ');
+}
+
+// ─── INVOICES LIST ───────────────────────────────────────────────────────────
+function renderInvoices() {
+  const search = ($('inv-search')?.value||'').toLowerCase();
+  const status = $('inv-status')?.value||'';
+  const year = $('inv-year')?.value||'';
+  const client = $('inv-client')?.value||'';
+
+  let filtered = invoices.filter(inv => {
+    if (search && !inv.client.toLowerCase().includes(search) && !inv.num.includes(search) && !String(inv.amount).includes(search)) return false;
+    if (status === 'overdue') {
+      if (!(inv.status === 'sent' && inv.due && daysDiff(inv.due) < 0)) return false;
+    } else if (status && inv.status !== status) return false;
+    if (year && !(inv.date||'').startsWith(year)) return false;
+    if (client && inv.client !== client) return false;
+    return true;
+  }).sort((a,b) => (b.date||'').localeCompare(a.date||''));
+
+  const total = filtered.length;
+  const start = (invPage-1)*INV_PER_PAGE;
+  const page = filtered.slice(start, start+INV_PER_PAGE);
+
+  $('inv-tbody').innerHTML = page.map(inv => `
+    <tr>
+      <td><strong>#${inv.num}</strong></td>
+      <td>${inv.client}</td>
+      <td><strong>${fmt(inv.amount)}</strong>${inv.expense ? `<br><span class="net-note">Net: ${fmt(inv.amount-inv.expense)}</span>` : ''}</td>
+      <td>${fmtDate(inv.date)}</td>
+      <td>${inv.due ? fmtDate(inv.due) : '—'}</td>
+      <td><span style="color:var(--text-muted);font-size:11px;">${inv.type||'project'}</span></td>
+      <td>${statusBadge(inv)}</td>
+      <td class="flex-gap">${actionBtns(inv)}</td>
+    </tr>`).join('');
+
+  $('inv-pager-info').textContent = `Showing ${start+1}–${Math.min(start+INV_PER_PAGE,total)} of ${total}`;
+  $('inv-prev').disabled = invPage <= 1;
+  $('inv-next').disabled = start+INV_PER_PAGE >= total;
+
+  // populate client filter
+  const clients = [...new Set(invoices.map(i=>i.client))].sort();
+  const sel = $('inv-client');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">All Clients</option>' + clients.map(c=>`<option ${c===cur?'selected':''} value="${c}">${c}</option>`).join('');
+}
+
+function changePage(dir) {
+  invPage += dir;
+  renderInvoices();
+}
+
+// ─── CREATE / EDIT ────────────────────────────────────────────────────────────
+function initCreate() {
+  $('f-num').value = nextNum();
+  $('f-date').value = today();
+  const due = new Date(); due.setDate(due.getDate()+30);
+  $('f-due').value = due.toISOString().slice(0,10);
+  $('f-client').value = '';
+  $('f-amount').value = '';
+  $('f-desc').value = '';
+  $('f-expense').value = '';
+  $('f-status').value = 'draft';
+  $('draft-preview').classList.remove('open');
+
+  const clients = [...new Set(invoices.map(i=>i.client))].sort();
+  $('client-list').innerHTML = clients.map(c=>`<option value="${c}">`).join('');
+}
+
+function buildInvoiceObj() {
+  return {
+    num: $('f-num').value || nextNum(),
+    id: $('f-num').value || nextNum(),
+    client: $('f-client').value.trim(),
+    amount: parseFloat($('f-amount').value)||0,
+    date: $('f-date').value,
+    due: $('f-due').value,
+    type: $('f-type').value,
+    desc: $('f-desc').value.trim(),
+    expense: parseFloat($('f-expense').value)||0,
+    status: $('f-status').value,
+    paymentMethod: $('f-payment').value,
+    payNotes: '',
+  };
+}
+
+function saveInvoice() {
+  const inv = buildInvoiceObj();
+  if (!inv.client || !inv.amount) { showToast('Please fill in client and amount.', 'var(--red)'); return; }
+  const idx = invoices.findIndex(i => i.num === inv.num);
+  if (idx >= 0) invoices[idx] = inv; else invoices.push(inv);
+  save();
+  showToast('Invoice #' + inv.num + ' saved!');
+  showPage('invoices', document.querySelectorAll('.nav-item')[1]);
+}
+
+function saveAndDraft() {
+  const inv = buildInvoiceObj();
+  if (!inv.client || !inv.amount) { showToast('Please fill in client and amount.', 'var(--red)'); return; }
+  const idx = invoices.findIndex(i => i.num === inv.num);
+  if (idx >= 0) invoices[idx] = inv; else invoices.push(inv);
+  save();
+  generateDraft(inv);
+}
+
+function generateDraft(inv) {
+  const payInfo = inv.paymentMethod === 'zelle' ? 'Zelle to 949-307-4780' :
+                  inv.paymentMethod === 'paypal' ? 'PayPal to ally.labriola@gmail.com' : 'Check payable to Allyson LaBriola';
+  const subject = `Invoice #${inv.num} — ${inv.client} | ${fmt(inv.amount)}`;
+  const body = `Hi [Name],
+
+Hope you're doing well! Attaching invoice #${inv.num} for ${inv.desc || 'services rendered'}.
+
+Invoice Details:
+  Client: ${inv.client}
+  Amount Due: ${fmt(inv.amount)}${inv.expense ? `\n  Your Net (after partner cost): ${fmt(inv.amount - inv.expense)}` : ''}
+  Invoice Date: ${fmtDate(inv.date)}
+  Due Date: ${fmtDate(inv.due)}
+  Payment: ${payInfo}
+
+Please let me know if you have any questions!
+
+Best,
+Ally
+
+--
+Allyson LaBriola | Meaningful Marketing
+meaningfulmarketinghouse.com | 949-307-4780`;
+
+  currentDraftSubject = subject;
+  currentDraftBody = body;
+
+  $('draft-subject-line').textContent = 'Subject: ' + subject;
+  $('draft-body-text').textContent = body;
+  $('draft-preview').classList.add('open');
+  showToast('Invoice saved + email draft generated!');
+}
+
+function copyDraft() {
+  navigator.clipboard.writeText('Subject: ' + currentDraftSubject + '\n\n' + currentDraftBody)
+    .then(() => showToast('Copied to clipboard!'))
+    .catch(() => showToast('Select text manually to copy.', 'var(--orange)'));
+}
+
+function openGmailDraft() {
+  const to = 'ally.labriola@gmail.com'; // placeholder — they'll change the To
+  const params = new URLSearchParams({ su: currentDraftSubject, body: currentDraftBody });
+  window.open('https://mail.google.com/mail/?view=cm&fs=1&' + params.toString(), '_blank');
+}
+
+// ─── PAY MODAL ───────────────────────────────────────────────────────────────
+function openPayModal(num) {
+  currentPayInvoiceId = num;
+  const inv = invoices.find(i => i.num === num);
+  $('pay-invoice-info').innerHTML = `<strong>#${inv.num} — ${inv.client}</strong><br><span style="color:var(--gold)">${fmt(inv.amount)}</span>`;
+  $('pay-date').value = today();
+  $('pay-amount').value = inv.amount;
+  openModal('pay-modal');
+}
+
+function confirmPay() {
+  const inv = invoices.find(i => i.num === currentPayInvoiceId);
+  inv.status = 'paid';
+  inv.paidDate = $('pay-date').value;
+  inv.paidMethod = $('pay-method').value;
+  inv.paidAmount = parseFloat($('pay-amount').value)||inv.amount;
+  inv.payNotes = $('pay-notes').value;
+  save();
+  closeModal('pay-modal');
+  showToast('Invoice #' + inv.num + ' marked paid! 🎉');
+  renderDashboard();
+}
+
+// ─── REMINDER MODAL ──────────────────────────────────────────────────────────
+function openReminderModal(num) {
+  currentReminderInvoiceId = num;
+  const inv = invoices.find(i => i.num === num);
+  const daysLate = inv.due ? Math.abs(daysDiff(inv.due)) : 0;
+  $('reminder-invoice-info').innerHTML = `Invoice #${inv.num} · ${inv.client} · <strong>${fmt(inv.amount)}</strong> · Due ${fmtDate(inv.due)} ${daysLate > 0 ? `· <span style="color:var(--red)">${daysLate} days late</span>` : ''}`;
+  $('r-to').value = inv.clientEmail || '(add client email)';
+  const subject = `Payment Reminder — Invoice #${inv.num} | ${inv.client}`;
+  $('r-subject').value = subject;
+  $('r-body').value = `Hi,
+
+Just circling back on invoice #${inv.num} — wanted to make sure it landed okay and check in on timing for payment.
+
+Invoice: #${inv.num}
+Amount Due: ${fmt(inv.amount)}
+Original Due Date: ${fmtDate(inv.due)}
+Payment: Zelle to 949-307-4780 (or PayPal — let me know what's easiest)
+
+No rush, just want to keep things on track. Let me know if you have any questions!
+
+Best,
+Ally
+
+Allyson LaBriola | Meaningful Marketing
+meaningfulmarketinghouse.com | 949-307-4780`;
+  openModal('reminder-modal');
+}
+
+function sendReminder() {
+  const subject = encodeURIComponent($('r-subject').value);
+  const body = encodeURIComponent($('r-body').value);
+  window.open(`https://mail.google.com/mail/?view=cm&fs=1&su=${subject}&body=${body}`, '_blank');
+  closeModal('reminder-modal');
+  showToast('Opened Gmail with reminder draft!');
+}
+
+// ─── CASH FLOW ───────────────────────────────────────────────────────────────
+function renderCashFlow() {
+  const active = invoices.filter(i => i.status === 'sent' && i.due);
+  const overdue = active.filter(i => daysDiff(i.due) < 0);
+  const due15 = active.filter(i => { const d=daysDiff(i.due); return d>=0 && d<=15; });
+  const due30 = active.filter(i => { const d=daysDiff(i.due); return d>15 && d<=30; });
+
+  $('cf-cards').innerHTML = `
+    <div class="cf-card"><div class="label">Overdue</div><div class="amount" style="color:var(--red)">${fmt(overdue.reduce((s,i)=>s+i.amount,0))}</div><div class="count">${overdue.length} invoice${overdue.length!==1?'s':''}</div></div>
+    <div class="cf-card"><div class="label">Due Next 15 Days</div><div class="amount" style="color:var(--orange)">${fmt(due15.reduce((s,i)=>s+i.amount,0))}</div><div class="count">${due15.length} invoice${due15.length!==1?'s':''}</div></div>
+    <div class="cf-card"><div class="label">Due 16–30 Days</div><div class="amount" style="color:var(--gold)">${fmt(due30.reduce((s,i)=>s+i.amount,0))}</div><div class="count">${due30.length} invoice${due30.length!==1?'s':''}</div></div>
+  `;
+
+  const cfRow = (inv, showLate) => {
+    const d = daysDiff(inv.due);
+    return `<tr>
+      <td><strong>#${inv.num}</strong></td>
+      <td>${inv.client}</td>
+      <td><strong>${fmt(inv.amount)}</strong></td>
+      <td>${fmtDate(inv.due)}</td>
+      <td>${showLate ? `<span style="color:var(--red)">${Math.abs(d)}d late</span>` : `<span style="color:var(--gold)">${d}d</span>`}</td>
+      <td class="flex-gap">
+        <button class="btn btn-green btn-sm" onclick="openPayModal('${inv.num}')">Mark Paid</button>
+        <button class="btn btn-red btn-sm" onclick="openReminderModal('${inv.num}')">Send Reminder</button>
+      </td>
+    </tr>`;
+  };
+
+  $('cf-15').innerHTML = due15.length ? due15.map(i=>cfRow(i,false)).join('') : '<tr><td colspan="6" style="color:var(--text-muted);padding:20px;">Nothing due in the next 15 days.</td></tr>';
+  $('cf-30').innerHTML = due30.length ? due30.map(i=>cfRow(i,false)).join('') : '<tr><td colspan="6" style="color:var(--text-muted);padding:20px;">Nothing due in 16–30 days.</td></tr>';
+
+  const overdueRows = overdue.map(inv => `<tr>
+    <td><strong>#${inv.num}</strong></td>
+    <td>${inv.client}</td>
+    <td><strong>${fmt(inv.amount)}</strong></td>
+    <td>${fmtDate(inv.due)}</td>
+    <td><span style="color:var(--red)">${Math.abs(daysDiff(inv.due))}d late</span></td>
+    <td class="flex-gap">
+      <button class="btn btn-green btn-sm" onclick="openPayModal('${inv.num}')">Mark Paid</button>
+      <button class="btn btn-red btn-sm" onclick="openReminderModal('${inv.num}')">Send Reminder</button>
+    </td>
+  </tr>`).join('');
+  $('cf-overdue').innerHTML = overdueRows || '<tr><td colspan="6" style="color:var(--green);padding:20px;">No overdue invoices!</td></tr>';
+}
+
+// ─── TAX REPORT ──────────────────────────────────────────────────────────────
+function renderTax() {
+  const years = [...new Set(invoices.filter(i=>i.date).map(i=>i.date.slice(0,4)))].sort((a,b)=>b-a);
+  $('tax-tabs').innerHTML = years.map(y=>`<div class="tax-tab ${y===taxYear?'active':''}" onclick="setTaxYear('${y}')">${y}</div>`).join('');
+
+  const paid = invoices.filter(i => i.status==='paid' && i.date && i.date.startsWith(taxYear) && i.amount > 0);
+  const gross = paid.reduce((s,i)=>s+i.amount,0);
+  const expenses = paid.reduce((s,i)=>s+(i.expense||0),0);
+  const net = gross - expenses;
+
+  $('tax-summary-cards').innerHTML = `
+    <div class="card"><div class="card-label">Gross Income ${taxYear}</div><div class="card-value gold">${fmt(gross)}</div></div>
+    <div class="card"><div class="card-label">Partner / Sub Costs</div><div class="card-value red">${fmt(expenses)}</div></div>
+    <div class="card"><div class="card-label">Net Income (Schedule C)</div><div class="card-value green">${fmt(net)}</div></div>
+    <div class="card"><div class="card-label">Paid Invoices</div><div class="card-value">${paid.length}</div></div>
+  `;
+
+  // by client
+  const byClient = {};
+  paid.forEach(i => {
+    if (!byClient[i.client]) byClient[i.client] = {gross:0,exp:0,count:0};
+    byClient[i.client].gross += i.amount;
+    byClient[i.client].exp += (i.expense||0);
+    byClient[i.client].count++;
+  });
+  $('tax-client-tbody').innerHTML = Object.entries(byClient)
+    .sort((a,b)=>b[1].gross-a[1].gross)
+    .map(([c,v])=>`<tr><td>${c}</td><td>${v.count}</td><td>${fmt(v.gross)}</td><td>${fmt(v.exp)}</td><td><strong>${fmt(v.gross-v.exp)}</strong></td></tr>`)
+    .join('');
+
+  // by quarter
+  const qs = {Q1:0,Q2:0,Q3:0,Q4:0};
+  const qe = {Q1:0,Q2:0,Q3:0,Q4:0};
+  paid.forEach(i => {
+    const m = parseInt(i.date.slice(5,7));
+    const q = m<=3?'Q1':m<=6?'Q2':m<=9?'Q3':'Q4';
+    qs[q] += i.amount;
+    qe[q] += (i.expense||0);
+  });
+  $('tax-q-tbody').innerHTML = ['Q1','Q2','Q3','Q4'].map(q=>`<tr><td>${q} ${taxYear}</td><td>${fmt(qs[q])}</td><td><strong>${fmt(qs[q]-qe[q])}</strong></td></tr>`).join('');
+}
+
+function setTaxYear(y) { taxYear = y; renderTax(); }
+
+function exportTaxCSV() {
+  const paid = invoices.filter(i => i.status==='paid' && i.date && i.date.startsWith(taxYear) && i.amount > 0);
+  const rows = [['Invoice#','Client','Date','Type','Gross','PartnerCosts','Net','Description']];
+  paid.sort((a,b)=>a.date.localeCompare(b.date)).forEach(i=>{
+    rows.push([i.num, i.client, i.date, i.type||'', i.amount, i.expense||0, i.amount-(i.expense||0), (i.desc||'').replace(/,/g,' ')]);
+  });
+  const csv = rows.map(r=>r.join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv,' + encodeURIComponent(csv);
+  a.download = `MM_Tax_${taxYear}.csv`;
+  a.click();
+}
+
+// ─── CLIENTS ─────────────────────────────────────────────────────────────────
+function renderClients() {
+  const by = {};
+  invoices.filter(i=>i.amount>0).forEach(i=>{
+    if (!by[i.client]) by[i.client]={total:0,paid:0,count:0,last:''};
+    by[i.client].total += i.amount;
+    if (i.status==='paid') by[i.client].paid += i.amount;
+    by[i.client].count++;
+    if (!by[i.client].last || i.date > by[i.client].last) by[i.client].last = i.date;
+  });
+  $('clients-tbody').innerHTML = Object.entries(by)
+    .sort((a,b)=>b[1].total-a[1].total)
+    .map(([c,v])=>`<tr><td><strong>${c}</strong></td><td>${fmt(v.total)}</td><td>${fmt(v.paid)}</td><td>${v.count}</td><td>${fmtDate(v.last)}</td></tr>`)
+    .join('');
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+function init() {
+  loadData();
+  renderDashboard();
+  // set tax year to current year
+  taxYear = String(new Date().getFullYear());
+}
+</script>
+</body>
+</html>
