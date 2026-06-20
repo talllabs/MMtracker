@@ -519,6 +519,9 @@
       <div class="cards" id="expense-cards"></div>
       <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
         <button class="btn-gold btn" onclick="openModal('add-expense-modal')">+ Add Expense</button>
+        <button class="btn btn-blue" onclick="openModal('paste-email-modal')">Paste Email</button>
+        <button class="btn btn-blue" onclick="$('csv-import-input').click()">Import CSV</button>
+        <input type="file" id="csv-import-input" accept=".csv" style="display:none;" onchange="importExpenseCSV(event)">
         <button class="btn btn-blue" onclick="exportExpenseCSV()">Download CSV</button>
       </div>
       <div class="table-wrap">
@@ -576,6 +579,22 @@
     <div class="form-actions">
       <button class="btn-gold btn" onclick="saveExpense()">Save Expense</button>
       <button class="btn btn-ghost" onclick="closeModal('add-expense-modal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- PASTE EMAIL MODAL -->
+<div class="modal-overlay" id="paste-email-modal">
+  <div class="modal" style="max-width:480px;">
+    <button class="modal-close" onclick="closeModal('paste-email-modal')">×</button>
+    <div class="modal-title">Paste Receipt / Expense Email</div>
+    <div class="form-group">
+      <label>Paste the full email text below</label>
+      <textarea id="email-paste-text" rows="10" placeholder="Paste the receipt or expense email here..."></textarea>
+    </div>
+    <div class="form-actions">
+      <button class="btn-gold btn" onclick="parseEmailExpense()">Parse Email</button>
+      <button class="btn btn-ghost" onclick="closeModal('paste-email-modal')">Cancel</button>
     </div>
   </div>
 </div>
@@ -1833,6 +1852,99 @@ function exportExpenseCSV() {
   const a=document.createElement('a');
   a.href='data:text/csv,'+encodeURIComponent(rows.map(r=>r.join(',')).join('\n'));
   a.download='MM_Expenses.csv'; a.click();
+}
+
+const EXPENSE_CATEGORIES = ['Software / Subscriptions','Contractor / Subcontractor','Advertising & Marketing','Office Supplies','Professional Services','Travel','Phone / Internet','Education / Training','Other'];
+const EXPENSE_CATEGORY_KEYWORDS = {
+  'Software / Subscriptions': /subscription|saas|software|adobe|canva|notion|zoom|dropbox|google workspace|microsoft 365|hosting|domain|app store|license/i,
+  'Contractor / Subcontractor': /contractor|subcontractor|freelance|upwork|fiverr/i,
+  'Advertising & Marketing': /ad(?:vertising)?|facebook ads|google ads|marketing|promo(?:tion)?|sponsor/i,
+  'Office Supplies': /office supplies|staples|paper|printer|ink|stationery/i,
+  'Professional Services': /legal|attorney|accountant|cpa|consult(?:ant|ing)|bookkeep/i,
+  'Travel': /flight|airline|hotel|uber|lyft|airbnb|rental car|travel|mileage/i,
+  'Phone / Internet': /phone bill|cell(?:ular)?|verizon|at&t|t-mobile|comcast|internet bill|wifi/i,
+  'Education / Training': /course|training|udemy|coursera|workshop|conference|webinar|book(?:s)?/i
+};
+
+function parseEmailExpense() {
+  const text = ($('email-paste-text').value || '').trim();
+  if (!text) { showToast('Paste an email first.', 'var(--red)'); return; }
+
+  const amounts = [...text.matchAll(/\$\s?([\d,]+(?:\.\d{1,2})?)/g)]
+    .map(m => parseFloat(m[1].replace(/,/g,'')))
+    .filter(n => n > 0);
+  const totalMatch = text.match(/(?:total|amount\s*(?:due|charged|paid)?|grand total)\s*[:\-]?\s*\$\s?([\d,]+(?:\.\d{1,2})?)/i);
+  const detectedAmount = totalMatch ? parseFloat(totalMatch[1].replace(/,/g,'')) : (amounts.length ? Math.max(...amounts) : 0);
+
+  const dateMatch = text.match(/\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})\b/) ||
+                    text.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s+\d{1,2},?\s+\d{4}/i);
+  let detectedDate = today();
+  if (dateMatch) {
+    const parsed = new Date(dateMatch[0]);
+    if (!isNaN(parsed)) detectedDate = parsed.toISOString().slice(0,10);
+  }
+
+  const fromMatch = text.match(/^from:\s*(.+)$/im);
+  const subjectMatch = text.match(/^subject:\s*(.+)$/im);
+  let detectedDesc = (subjectMatch && subjectMatch[1].trim()) || (fromMatch && fromMatch[1].trim()) || '';
+  if (!detectedDesc) {
+    const firstLine = text.split('\n').map(l=>l.trim()).find(l=>l.length>3 && l.length<120);
+    detectedDesc = firstLine || '';
+  }
+
+  let detectedCategory = 'Other';
+  for (const [cat, re] of Object.entries(EXPENSE_CATEGORY_KEYWORDS)) {
+    if (re.test(text)) { detectedCategory = cat; break; }
+  }
+
+  closeModal('paste-email-modal');
+  $('email-paste-text').value = '';
+  openModal('add-expense-modal');
+  $('exp-date').value = detectedDate;
+  $('exp-cat').value = detectedCategory;
+  $('exp-desc').value = detectedDesc.slice(0,120);
+  $('exp-amount').value = detectedAmount || '';
+  $('exp-receipt').value = '';
+  showToast(detectedAmount ? 'Email parsed — review and save.' : 'Could not detect an amount — please fill in manually.', detectedAmount ? 'var(--green)' : 'var(--orange)');
+}
+
+function importExpenseCSV(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const lines = String(reader.result).split(/\r?\n/).filter(l=>l.trim().length);
+    if (!lines.length) { showToast('CSV file is empty.', 'var(--red)'); return; }
+
+    let header = lines[0].split(',').map(h=>h.trim().toLowerCase());
+    const hasHeader = header.some(h=>['date','category','description','amount','receipt'].includes(h));
+    const dataLines = hasHeader ? lines.slice(1) : lines;
+    const colIdx = hasHeader
+      ? { date: header.indexOf('date'), category: header.indexOf('category'), desc: header.indexOf('description'), amount: header.indexOf('amount'), receipt: header.indexOf('receipt') }
+      : { date: 0, category: 1, desc: 2, amount: 3, receipt: 4 };
+
+    let imported = 0;
+    dataLines.forEach(line => {
+      const cols = line.split(',').map(c=>c.trim());
+      const amount = parseFloat((cols[colIdx.amount]||'').replace(/[^0-9.\-]/g,'')) || 0;
+      const desc = colIdx.desc>=0 ? (cols[colIdx.desc]||'') : '';
+      if (!desc || !amount) return;
+      expenses.push({
+        date: (colIdx.date>=0 && cols[colIdx.date]) || today(),
+        category: (colIdx.category>=0 && EXPENSE_CATEGORIES.includes(cols[colIdx.category])) ? cols[colIdx.category] : 'Other',
+        desc,
+        amount,
+        receipt: colIdx.receipt>=0 ? (cols[colIdx.receipt]||'') : ''
+      });
+      imported++;
+    });
+
+    saveExpenses();
+    renderExpenses();
+    showToast(imported ? `Imported ${imported} expense${imported>1?'s':''}!` : 'No valid rows found in CSV.', imported ? 'var(--green)' : 'var(--red)');
+    event.target.value = '';
+  };
+  reader.readAsText(file);
 }
 
 // ─── CLIENT PROFILES / AGING ─────────────────────────────────────────────────
