@@ -1866,15 +1866,24 @@ const EXPENSE_CATEGORY_KEYWORDS = {
   'Education / Training': /course|training|udemy|coursera|workshop|conference|webinar|book(?:s)?/i
 };
 
+const EMAIL_NOISE_LINE_RE = /^(skip to content|using gmail.*|is this correct\??|upvote content|downvote content|scanned by gmail|\d+ attachments?|compose:?|minimize|pop-?out|close|zoomed (in|out).*|next|autocorrected to drive|none selected|download invoice|download receipt|powered by stripe.*|learn more about stripe.*|questions\? visit our support site\.?|see order for more details|items)$/i;
+
 function parseEmailExpense() {
-  const text = ($('email-paste-text').value || '').trim();
-  if (!text) { showToast('Paste an email first.', 'var(--red)'); return; }
+  const raw = ($('email-paste-text').value || '').trim();
+  if (!raw) { showToast('Paste an email first.', 'var(--red)'); return; }
+
+  const lines = raw.split('\n').map(l=>l.trim()).filter(l=>l && !EMAIL_NOISE_LINE_RE.test(l));
+  const text = lines.join('\n');
 
   const amounts = [...text.matchAll(/\$\s?([\d,]+(?:\.\d{1,2})?)/g)]
     .map(m => parseFloat(m[1].replace(/,/g,'')))
     .filter(n => n > 0);
-  const totalMatch = text.match(/(?:total|amount\s*(?:due|charged|paid)?|grand total)\s*[:\-]?\s*\$\s?([\d,]+(?:\.\d{1,2})?)/i);
-  const detectedAmount = totalMatch ? parseFloat(totalMatch[1].replace(/,/g,'')) : (amounts.length ? Math.max(...amounts) : 0);
+  const paidMatch = text.match(/amount\s*paid\s*[:\-]?\s*\$\s?([\d,]+(?:\.\d{1,2})?)/i);
+  const grandTotalMatch = text.match(/grand\s*total\s*[:\-]?\s*\$\s?([\d,]+(?:\.\d{1,2})?)/i);
+  const totalMatch = text.match(/(?<!sub)\btotal\s*[:\-]?\s*\$\s?([\d,]+(?:\.\d{1,2})?)/i);
+  const amountDueMatch = text.match(/amount\s*(?:due|charged)\s*[:\-]?\s*\$\s?([\d,]+(?:\.\d{1,2})?)/i);
+  const matched = paidMatch || grandTotalMatch || totalMatch || amountDueMatch;
+  const detectedAmount = matched ? parseFloat(matched[1].replace(/,/g,'')) : (amounts.length ? Math.max(...amounts) : 0);
 
   const dateMatch = text.match(/\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})\b/) ||
                     text.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s+\d{1,2},?\s+\d{4}/i);
@@ -1884,11 +1893,21 @@ function parseEmailExpense() {
     if (!isNaN(parsed)) detectedDate = parsed.toISOString().slice(0,10);
   }
 
-  const fromMatch = text.match(/^from:\s*(.+)$/im);
-  const subjectMatch = text.match(/^subject:\s*(.+)$/im);
-  let detectedDesc = (subjectMatch && subjectMatch[1].trim()) || (fromMatch && fromMatch[1].trim()) || '';
+  const itemMatch = text.match(/\n\s*([A-Za-z][\w&,.'\- ]{2,60})\s*\n\s*Qty\s*\d+/i);
+  const vendorMatch = text.match(/receipt from ([^\n#]+)/i) ||
+                      text.match(/invoice from ([^\n#]+)/i) ||
+                      text.match(/ordered from\s*\n\s*([^\n]+)/i);
+  let detectedDesc = '';
+  if (itemMatch && vendorMatch) detectedDesc = `${itemMatch[1].trim()} – ${vendorMatch[1].trim()}`;
+  else if (itemMatch) detectedDesc = itemMatch[1].trim();
+  else if (vendorMatch) detectedDesc = vendorMatch[1].trim();
   if (!detectedDesc) {
-    const firstLine = text.split('\n').map(l=>l.trim()).find(l=>l.length>3 && l.length<120);
+    const fromMatch = text.match(/^from:\s*(.+)$/im);
+    const subjectMatch = text.match(/^subject:\s*(.+)$/im);
+    detectedDesc = (subjectMatch && subjectMatch[1].trim()) || (fromMatch && fromMatch[1].trim()) || '';
+  }
+  if (!detectedDesc) {
+    const firstLine = lines.find(l => l.length>3 && l.length<120);
     detectedDesc = firstLine || '';
   }
 
