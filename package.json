@@ -1,0 +1,53 @@
+{
+  "name": "linkedin-sheets-daily-sync",
+  "version": "1.0.0",
+  "description": "Daily LinkedIn content-search to Google Sheets sync — desktop app",
+  "main": "main/main.js",
+  "author": "Meaningful Marketing",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "postinstall": "playwright install chromium",
+    "dist": "electron-builder --mac dmg"
+  },
+  "dependencies": {
+    "electron-store": "^8.2.0",
+    "googleapis": "^140.0.1",
+    "playwright": "^1.47.0"
+  },
+  "devDependencies": {
+    "electron": "^31.3.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.meaningfulmarketing.linkedinsheetssync",
+    "productName": "LinkedIn Sheets Sync",
+    "files": [
+      "main/**/*",
+      "renderer/**/*",
+      "src/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "target": [
+        { "target": "dmg", "arch": ["x64", "arm64"] },
+        { "target": "dir", "arch": ["x64", "arm64"] }
+      ],
+      "category": "public.app-category.productivity",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
+    },
+    "dmg": {
+      "title": "LinkedIn Sheets Sync",
+      "contents": [
+        { "x": 130, "y": 220 },
+        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+      ]
+    },
+    "asarUnpack": [
+      "node_modules/playwright/**/*"
+    ]
+  }
+}
