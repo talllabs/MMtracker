@@ -208,8 +208,11 @@
       <input id="repoInput" type="text" placeholder="owner/repo" value="talllabs/MMtracker" />
       <input id="branchInput" type="text" placeholder="branch" value="main" style="width:100px" />
       <button id="refreshBtn">Refresh</button>
+      <button id="runCheckBtn" class="btn primary">Run Check Now</button>
     </div>
   </header>
+
+  <div class="status-msg" id="runCheckStatus" style="margin-bottom:12px;"></div>
 
   <div class="stats">
     <div class="stat"><div class="label">Sites Watched</div><div class="value" id="statSites">–</div></div>
@@ -429,6 +432,40 @@
   }
 
   refreshBtn.addEventListener('click', () => { refreshAll(); loadWatchlist(); });
+
+  // ------------------------------------------------------------------
+  // Run Check Now — dispatches the monitor GitHub Actions workflow
+  // ------------------------------------------------------------------
+  const runCheckBtn = document.getElementById('runCheckBtn');
+  const runCheckStatus = document.getElementById('runCheckStatus');
+
+  runCheckBtn.addEventListener('click', async () => {
+    runCheckBtn.disabled = true;
+    runCheckBtn.textContent = 'Starting…';
+    runCheckStatus.className = 'status-msg';
+    runCheckStatus.textContent = '';
+    try {
+      const res = await fetch('/api/run-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-WebWatch-Password': PASSWORD },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        runCheckStatus.className = 'status-msg error';
+        runCheckStatus.textContent = data.error || 'Failed to start the check.';
+      } else {
+        runCheckStatus.className = 'status-msg ok';
+        runCheckStatus.innerHTML = `${escapeHtml(data.message || 'Check started.')} <a class="site-link" href="${escapeAttr(data.actionsUrl)}" target="_blank" rel="noopener">View run on GitHub</a> — refresh here once it finishes.`;
+      }
+    } catch (e) {
+      runCheckStatus.className = 'status-msg error';
+      runCheckStatus.textContent = `Failed to start the check: ${e.message}`;
+    } finally {
+      runCheckBtn.disabled = false;
+      runCheckBtn.textContent = 'Run Check Now';
+    }
+  });
 
   // ------------------------------------------------------------------
   // Watchlist management (add one-by-one, or bulk CSV import)
