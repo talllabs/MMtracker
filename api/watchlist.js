@@ -15,17 +15,55 @@ const DEFAULT_REPO = "talllabs/MMtracker";
 const DEFAULT_BRANCH = "main";
 const WATCHLIST_PATH = "webwatch-watchlist.csv";
 
-function parseCsv(text) {
-  const lines = text.replace(/\r\n/g, "\n").split("\n").filter((l) => l.trim().length > 0);
-  if (lines.length === 0) return [];
+// RFC4180-ish CSV parser: handles quoted fields with embedded commas,
+// quotes ("") and newlines. Naive split(',') corrupts any row where a URL
+// (e.g. a query string) contains a comma inside quotes.
+function parseCsvRows(text) {
   const rows = [];
-  for (const line of lines.slice(1)) {
-    const [name, url] = line.split(",");
-    if (url && url.trim()) {
-      rows.push({ name: (name || "").trim(), url: url.trim() });
+  let row = [];
+  let field = "";
+  let inQuotes = false;
+  const s = text.replace(/\r\n/g, "\n");
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (s[i + 1] === '"') { field += '"'; i++; }
+        else inQuotes = false;
+      } else {
+        field += c;
+      }
+    } else if (c === '"') {
+      inQuotes = true;
+    } else if (c === ",") {
+      row.push(field);
+      field = "";
+    } else if (c === "\n") {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = "";
+    } else {
+      field += c;
     }
   }
-  return rows;
+  if (field.length > 0 || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
+  return rows.filter((r) => r.some((c) => c.trim().length > 0));
+}
+
+function parseCsv(text) {
+  const rows = parseCsvRows(text);
+  if (rows.length === 0) return [];
+  const entries = [];
+  for (const [name, url] of rows.slice(1)) {
+    if (url && url.trim()) {
+      entries.push({ name: (name || "").trim(), url: url.trim() });
+    }
+  }
+  return entries;
 }
 
 function toCsv(rows) {
