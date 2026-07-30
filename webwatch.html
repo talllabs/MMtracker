@@ -317,13 +317,50 @@
     return `https://raw.githubusercontent.com/${repo}/${branch}/${path}?t=${Date.now()}`;
   }
 
+  // RFC4180-ish CSV parser: handles quoted fields with embedded commas and
+  // quotes ("") - a naive split(',') corrupts any URL whose query string
+  // contains a comma inside quotes.
+  function parseCsvRows(text) {
+    const rows = [];
+    let row = [];
+    let field = '';
+    let inQuotes = false;
+    const s = text.replace(/\r\n/g, '\n');
+    for (let i = 0; i < s.length; i++) {
+      const c = s[i];
+      if (inQuotes) {
+        if (c === '"') {
+          if (s[i + 1] === '"') { field += '"'; i++; }
+          else inQuotes = false;
+        } else {
+          field += c;
+        }
+      } else if (c === '"') {
+        inQuotes = true;
+      } else if (c === ',') {
+        row.push(field);
+        field = '';
+      } else if (c === '\n') {
+        row.push(field);
+        rows.push(row);
+        row = [];
+        field = '';
+      } else {
+        field += c;
+      }
+    }
+    if (field.length > 0 || row.length > 0) {
+      row.push(field);
+      rows.push(row);
+    }
+    return rows.filter(r => r.some(c => c.trim().length > 0));
+  }
+
   function parseCsv(text) {
-    const lines = text.replace(/\r\n/g, '\n').split('\n').filter(l => l.length > 0);
-    if (lines.length === 0) return { headers: [], rows: [] };
-    const headers = lines[0].split(',');
-    const rows = lines.slice(1).map(line => {
-      // simple split good enough for our fixed, comma-free fields
-      const cells = line.split(',');
+    const csvRows = parseCsvRows(text);
+    if (csvRows.length === 0) return { headers: [], rows: [] };
+    const headers = csvRows[0];
+    const rows = csvRows.slice(1).map(cells => {
       const row = {};
       headers.forEach((h, i) => { row[h] = cells[i] !== undefined ? cells[i] : ''; });
       return row;
@@ -411,13 +448,10 @@
   }
 
   async function loadCache() {
-    try {
-      const text = await fetchText('webwatch_cache.json');
-      const data = JSON.parse(text);
-      document.getElementById('statSites').textContent = Object.keys(data).length;
-    } catch (e) {
-      document.getElementById('statSites').textContent = '–';
-    }
+    // Kept for potential future use; "Sites Watched" is now driven by the
+    // full watchlist (see renderWatchlist) rather than the cache, since the
+    // cache only contains sites that were successfully reachable on the
+    // last run and would otherwise undercount the watchlist.
   }
 
   function escapeHtml(s) {
@@ -487,6 +521,7 @@
 
   function renderWatchlist(rows) {
     watchlistCount.textContent = `${rows.length} site${rows.length === 1 ? '' : 's'}`;
+    document.getElementById('statSites').textContent = rows.length;
     if (rows.length === 0) {
       watchlistBody.innerHTML = '<div class="empty">No URLs yet. Add one above or bulk import a CSV.</div>';
       return;
@@ -542,13 +577,12 @@
   });
 
   function parseWatchlistCsv(text) {
-    const lines = text.replace(/\r\n/g, '\n').split('\n').filter(l => l.trim().length > 0);
-    if (lines.length === 0) return [];
-    const header = lines[0].toLowerCase();
+    const csvRows = parseCsvRows(text);
+    if (csvRows.length === 0) return [];
+    const header = (csvRows[0][0] || '').toLowerCase() + ',' + (csvRows[0][1] || '').toLowerCase();
     const startIdx = /name/.test(header) && /url/.test(header) ? 1 : 0;
     const entries = [];
-    for (const line of lines.slice(startIdx)) {
-      const cells = line.split(',');
+    for (const cells of csvRows.slice(startIdx)) {
       if (cells.length === 1) {
         entries.push({ name: '', url: cells[0].trim() });
       } else {
