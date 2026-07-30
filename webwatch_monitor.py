@@ -58,7 +58,10 @@ BASE44_WEBHOOK_URL = os.getenv(
 # monitor ask an LLM whether a detected change is a *meaningful* new RFP/
 # tender opportunity - vs. noise like a date stamp, ad rotation, or footer
 # text - before sending the webhook. Without a key, every detected change is
-# treated as meaningful (old behavior).
+# treated as meaningful (old behavior). Set ONE of these (OpenAI is tried
+# first if both happen to be set).
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001")
 
@@ -189,27 +192,12 @@ def build_diff(old_text, new_text, max_chars=1500):
     return diff
 
 
-def classify_change(site_name, old_text, new_text):
+def build_classification_prompt(site_name, old_text, new_text):
     """
-    Asks an LLM (if ANTHROPIC_API_KEY is configured) whether a detected
-    change represents a meaningful new RFP/tender opportunity being posted,
-    as opposed to noise (a date stamp, ad rotation, unrelated footer text).
-
-    Without an API key, every change is treated as meaningful (the old,
-    always-notify behavior).
-
-    Args:
-        site_name (str): Name of the site
-        old_text (str): Previously seen content
-        new_text (str): Newly fetched content
-
-    Returns:
-        tuple: (meaningful: bool, summary: str)
+    Builds the shared prompt used to ask an LLM whether a detected change
+    is a genuinely new RFP/tender opportunity, regardless of provider.
     """
-    if not ANTHROPIC_API_KEY:
-        return True, "LLM classification not configured - content changed, review manually."
-
-    prompt = f"""You are monitoring "{site_name}" for new RFP / tender / procurement opportunities.
+    return f"""You are monitoring "{site_name}" for new RFP / tender / procurement opportunities.
 The page content changed. Compare the OLD and NEW text below and decide:
 Does this change represent a genuinely NEW RFP, tender, bid opportunity, or
 procurement notice being added (or a meaningful update to one)? Ignore
@@ -225,33 +213,90 @@ OLD TEXT:
 NEW TEXT:
 {new_text[:2000]}"""
 
+
+def parse_classification_json(site_name, text):
+    """
+    Extracts and parses the {"meaningful": ..., "summary": ...} JSON object
+    an LLM was asked to return. Falls back to "treat as meaningful" if the
+    response can't be parsed, since silently dropping a real opportunity is
+    worse than an extra webhook call.
+    """
+    match = re.search(r"\{.*\}", text, re.S)
+    if not match:
+        log_message(f"warning: LLM response for {site_name} wasn't valid JSON, treating as meaningful")
+        return True, "LLM response could not be parsed - content changed, review manually."
+    parsed = json.loads(match.group(0))
+    return bool(parsed.get("meaningful", True)), str(parsed.get("summary", "")).strip()
+
+
+def classify_with_openai(site_name, old_text, new_text):
+    prompt = build_classification_prompt(site_name, old_text, new_text)
+    response = requests.post(
+        "https://api.openai.com/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": OPENAI_MODEL,
+            "max_tokens": 300,
+            "messages": [{"role": "user", "content": prompt}],
+        },
+        timeout=20,
+    )
+    response.raise_for_status()
+    data = response.json()
+    text = data["choices"][0]["message"]["content"]
+    return parse_classification_json(site_name, text)
+
+
+def classify_with_anthropic(site_name, old_text, new_text):
+    prompt = build_classification_prompt(site_name, old_text, new_text)
+    response = requests.post(
+        "https://api.anthropic.com/v1/messages",
+        headers={
+            "x-api-key": ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        },
+        json={
+            "model": ANTHROPIC_MODEL,
+            "max_tokens": 300,
+            "messages": [{"role": "user", "content": prompt}],
+        },
+        timeout=20,
+    )
+    response.raise_for_status()
+    data = response.json()
+    text = "".join(block.get("text", "") for block in data.get("content", []))
+    return parse_classification_json(site_name, text)
+
+
+def classify_change(site_name, old_text, new_text):
+    """
+    Asks an LLM (OpenAI if OPENAI_API_KEY is set, otherwise Anthropic if
+    ANTHROPIC_API_KEY is set) whether a detected change represents a
+    meaningful new RFP/tender opportunity being posted, as opposed to noise
+    (a date stamp, ad rotation, unrelated footer text).
+
+    Without either API key, every change is treated as meaningful (the old,
+    always-notify behavior).
+
+    Args:
+        site_name (str): Name of the site
+        old_text (str): Previously seen content
+        new_text (str): Newly fetched content
+
+    Returns:
+        tuple: (meaningful: bool, summary: str)
+    """
+    if not OPENAI_API_KEY and not ANTHROPIC_API_KEY:
+        return True, "LLM classification not configured - content changed, review manually."
+
     try:
-        response = requests.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": ANTHROPIC_API_KEY,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
-            json={
-                "model": ANTHROPIC_MODEL,
-                "max_tokens": 300,
-                "messages": [{"role": "user", "content": prompt}],
-            },
-            timeout=20,
-        )
-        response.raise_for_status()
-        data = response.json()
-        text = "".join(block.get("text", "") for block in data.get("content", []))
-
-        match = re.search(r"\{.*\}", text, re.S)
-        if not match:
-            log_message(f"warning: LLM response for {site_name} wasn't valid JSON, treating as meaningful")
-            return True, "LLM response could not be parsed - content changed, review manually."
-
-        parsed = json.loads(match.group(0))
-        return bool(parsed.get("meaningful", True)), str(parsed.get("summary", "")).strip()
-
+        if OPENAI_API_KEY:
+            return classify_with_openai(site_name, old_text, new_text)
+        return classify_with_anthropic(site_name, old_text, new_text)
     except Exception as e:
         log_message(f"warning: LLM classification failed for {site_name}: {str(e)} - treating as meaningful")
         return True, f"LLM classification failed ({str(e)}) - content changed, review manually."
@@ -396,8 +441,8 @@ def run_monitor():
     # Check if webhook is configured
     if not BASE44_WEBHOOK_URL:
         log_message("BASE44_WEBHOOK_URL not set - skipping webhook, results will go to " + RESULTS_FILE)
-    if not ANTHROPIC_API_KEY:
-        log_message("ANTHROPIC_API_KEY not set - every content change will be treated as meaningful")
+    if not OPENAI_API_KEY and not ANTHROPIC_API_KEY:
+        log_message("no LLM API key set (OPENAI_API_KEY / ANTHROPIC_API_KEY) - every content change will be treated as meaningful")
 
     # Step 1: Load what we saw last time
     cache = load_cache()
