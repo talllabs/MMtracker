@@ -137,7 +137,7 @@
   footer { color: var(--muted); font-size: 0.78rem; text-align: center; margin-top: 24px; }
   footer a { color: var(--accent); }
 
-  input[type="text"] {
+  input[type="text"], input[type="password"] {
     background: var(--panel);
     border: 1px solid var(--border);
     color: var(--text);
@@ -146,10 +146,59 @@
     font-size: 0.85rem;
     width: 220px;
   }
+
+  #gate {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .gate-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px;
+    width: 320px;
+    text-align: center;
+  }
+  .gate-card h1 { font-size: 1.15rem; margin: 0 0 4px; }
+  .gate-card p { color: var(--muted); font-size: 0.85rem; margin: 0 0 16px; }
+  .gate-card input { width: 100%; margin-bottom: 10px; text-align: center; }
+  .gate-card button { width: 100%; justify-content: center; }
+  .gate-error { color: var(--bad); font-size: 0.8rem; min-height: 1.2em; margin-top: 8px; }
+
+  .add-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .add-form input[type="text"] { flex: 1; min-width: 160px; }
+  .import-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 16px;
+  }
+  .status-msg { font-size: 0.8rem; padding: 0 16px 12px; color: var(--muted); }
+  .status-msg.ok { color: var(--good); }
+  .status-msg.error { color: var(--bad); }
 </style>
 </head>
 <body>
-<div class="wrap">
+
+<div id="gate">
+  <div class="gate-card">
+    <h1>WebWatch RFP Monitor</h1>
+    <p>Enter the dashboard password to continue.</p>
+    <input id="gatePassword" type="password" placeholder="Password" autofocus />
+    <button id="gateSubmit" class="btn primary" style="width:100%;justify-content:center;">Unlock</button>
+    <div class="gate-error" id="gateError"></div>
+  </div>
+</div>
+
+<div class="wrap" id="dashboard" style="display:none;">
   <header>
     <div>
       <h1>WebWatch RFP Monitor</h1>
@@ -187,15 +236,73 @@
     <pre class="log" id="logBody">Loading…</pre>
   </div>
 
+  <div class="panel">
+    <div class="panel-header">
+      <h2>URLs to Watch</h2>
+      <span class="badge" id="watchlistCount">–</span>
+    </div>
+    <form class="add-form" id="addForm">
+      <input id="addName" type="text" placeholder="Site name (optional)" />
+      <input id="addUrl" type="text" placeholder="https://example.com/rfps" required />
+      <button type="submit" class="btn primary">Add URL</button>
+    </form>
+    <div class="import-row">
+      <label class="btn" for="csvFile">Bulk import CSV</label>
+      <input id="csvFile" type="file" accept=".csv,text/csv" style="display:none;" />
+      <span class="mono" id="csvFileName">name,url columns expected</span>
+    </div>
+    <div class="status-msg" id="watchlistStatus"></div>
+    <div class="panel-body" id="watchlistBody">
+      <div class="empty">Loading…</div>
+    </div>
+  </div>
+
   <footer>
     Reads <span class="mono">webwatch_results.csv</span>, <span class="mono">webwatch_log.txt</span> and
     <span class="mono">webwatch_cache.json</span> directly from GitHub (raw.githubusercontent.com) on each refresh.
-    No backend required. Set the repo/branch above if the monitor commits to a different branch.
+    URLs added or imported here are saved permanently to
+    <span class="mono">webwatch-watchlist.csv</span> via the <span class="mono">/api/watchlist</span> function
+    so the monitor never forgets them.
   </footer>
 </div>
 
 <script>
 (function () {
+  const PASSWORD = 'beta';
+  const SESSION_KEY = 'webwatch_unlocked';
+
+  const gate = document.getElementById('gate');
+  const dashboard = document.getElementById('dashboard');
+  const gatePassword = document.getElementById('gatePassword');
+  const gateSubmit = document.getElementById('gateSubmit');
+  const gateError = document.getElementById('gateError');
+
+  function unlock() {
+    gate.style.display = 'none';
+    dashboard.style.display = '';
+    sessionStorage.setItem(SESSION_KEY, '1');
+    refreshAll();
+    loadWatchlist();
+  }
+
+  function tryUnlock() {
+    if (gatePassword.value === PASSWORD) {
+      gateError.textContent = '';
+      unlock();
+    } else {
+      gateError.textContent = 'Incorrect password.';
+    }
+  }
+
+  gateSubmit.addEventListener('click', tryUnlock);
+  gatePassword.addEventListener('keydown', (e) => { if (e.key === 'Enter') tryUnlock(); });
+
+  const alreadyUnlocked = sessionStorage.getItem(SESSION_KEY) === '1';
+  if (alreadyUnlocked) {
+    gate.style.display = 'none';
+    dashboard.style.display = '';
+  }
+
   const repoInput = document.getElementById('repoInput');
   const branchInput = document.getElementById('branchInput');
   const refreshBtn = document.getElementById('refreshBtn');
@@ -321,8 +428,117 @@
     loadCache();
   }
 
-  refreshBtn.addEventListener('click', refreshAll);
-  refreshAll();
+  refreshBtn.addEventListener('click', () => { refreshAll(); loadWatchlist(); });
+
+  // ------------------------------------------------------------------
+  // Watchlist management (add one-by-one, or bulk CSV import)
+  // ------------------------------------------------------------------
+
+  const addForm = document.getElementById('addForm');
+  const addName = document.getElementById('addName');
+  const addUrl = document.getElementById('addUrl');
+  const csvFile = document.getElementById('csvFile');
+  const csvFileName = document.getElementById('csvFileName');
+  const watchlistBody = document.getElementById('watchlistBody');
+  const watchlistCount = document.getElementById('watchlistCount');
+  const watchlistStatus = document.getElementById('watchlistStatus');
+
+  function setWatchlistStatus(message, kind) {
+    watchlistStatus.textContent = message || '';
+    watchlistStatus.className = 'status-msg' + (kind ? ' ' + kind : '');
+  }
+
+  function renderWatchlist(rows) {
+    watchlistCount.textContent = `${rows.length} site${rows.length === 1 ? '' : 's'}`;
+    if (rows.length === 0) {
+      watchlistBody.innerHTML = '<div class="empty">No URLs yet. Add one above or bulk import a CSV.</div>';
+      return;
+    }
+    let html = '<table><thead><tr><th>Name</th><th>URL</th></tr></thead><tbody>';
+    for (const r of rows) {
+      html += `<tr>
+        <td>${escapeHtml(r.name || '')}</td>
+        <td><a class="site-link" href="${escapeAttr(r.url)}" target="_blank" rel="noopener">${escapeHtml(r.url)}</a></td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    watchlistBody.innerHTML = html;
+  }
+
+  async function loadWatchlist() {
+    try {
+      const res = await fetch('/api/watchlist', { cache: 'no-store' });
+      const data = await res.json();
+      if (data.warning) setWatchlistStatus(data.warning, 'error');
+      renderWatchlist(data.rows || []);
+    } catch (e) {
+      watchlistBody.innerHTML = `<div class="empty">Couldn't load the watchlist (${escapeHtml(e.message)}).</div>`;
+    }
+  }
+
+  async function submitEntries(entries, successLabel) {
+    setWatchlistStatus('Saving…');
+    try {
+      const res = await fetch('/api/watchlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-WebWatch-Password': PASSWORD },
+        body: JSON.stringify({ entries }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setWatchlistStatus(data.error || 'Failed to save.', 'error');
+        return;
+      }
+      renderWatchlist(data.rows || []);
+      setWatchlistStatus(`${successLabel} — ${data.added} added, ${data.updated} updated, ${data.total} total.`, 'ok');
+    } catch (e) {
+      setWatchlistStatus(`Failed to save: ${e.message}`, 'error');
+    }
+  }
+
+  addForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const url = addUrl.value.trim();
+    if (!url) return;
+    await submitEntries([{ name: addName.value.trim(), url }], 'Added');
+    addForm.reset();
+  });
+
+  function parseWatchlistCsv(text) {
+    const lines = text.replace(/\r\n/g, '\n').split('\n').filter(l => l.trim().length > 0);
+    if (lines.length === 0) return [];
+    const header = lines[0].toLowerCase();
+    const startIdx = /name/.test(header) && /url/.test(header) ? 1 : 0;
+    const entries = [];
+    for (const line of lines.slice(startIdx)) {
+      const cells = line.split(',');
+      if (cells.length === 1) {
+        entries.push({ name: '', url: cells[0].trim() });
+      } else {
+        entries.push({ name: (cells[0] || '').trim(), url: (cells[1] || '').trim() });
+      }
+    }
+    return entries.filter(e => e.url);
+  }
+
+  csvFile.addEventListener('change', async () => {
+    const file = csvFile.files[0];
+    if (!file) return;
+    csvFileName.textContent = file.name;
+    const text = await file.text();
+    const entries = parseWatchlistCsv(text);
+    if (entries.length === 0) {
+      setWatchlistStatus('No valid rows found in that CSV (expected name,url columns).', 'error');
+      return;
+    }
+    await submitEntries(entries, `Imported ${file.name}`);
+    csvFile.value = '';
+  });
+
+  if (alreadyUnlocked) {
+    refreshAll();
+    loadWatchlist();
+  }
 })();
 </script>
 </body>
