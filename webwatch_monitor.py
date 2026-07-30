@@ -38,11 +38,15 @@ CACHE_FILE = os.getenv("WEBWATCH_CACHE_FILE", str(REPO_ROOT / "webwatch_cache.js
 LOG_FILE = os.getenv("WEBWATCH_LOG_FILE", str(REPO_ROOT / "webwatch_log.txt"))
 RESULTS_FILE = os.getenv("WEBWATCH_RESULTS_FILE", str(REPO_ROOT / "webwatch_results.csv"))  # Detected changes, one row per run
 
-# YOUR BASE44 WEBHOOK URL - Read from GitHub Secrets (or environment variable)
-# On GitHub: Settings > Secrets > Actions > Add BASE44_WEBHOOK_URL
-# Locally: set it manually or use environment variable
-# Leave unset to skip the webhook and just log results to RESULTS_FILE
-BASE44_WEBHOOK_URL = os.getenv("BASE44_WEBHOOK_URL", "")
+# YOUR BASE44 WEBHOOK URL
+# Defaults to the permanent Super RFP Hunter endpoint below. Override via the
+# BASE44_WEBHOOK_URL GitHub Secret (Settings > Secrets > Actions) or environment
+# variable if it ever needs to change. Set the env var to an empty string to
+# disable the webhook and only log results to RESULTS_FILE.
+BASE44_WEBHOOK_URL = os.getenv(
+    "BASE44_WEBHOOK_URL",
+    "https://super-rfp-hunter-565f90d3.base44.app/functions/receiveRfpLead",
+)
 
 # How much content to check (in characters).
 # Smaller = faster, but might miss subtle changes
