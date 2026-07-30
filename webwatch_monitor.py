@@ -7,7 +7,8 @@ What it does:
 - Reads your watchlist (CSV)
 - Checks each site for updates
 - Compares with previous data
-- Sends webhook to Base44 when changes detected
+- Sends webhook to Base44 when changes detected (optional - skipped if not configured)
+- Records every detected change to a results CSV
 - Keeps a log of all checks
 
 NEW TO CODING? Here's what each part means:
@@ -35,11 +36,13 @@ REPO_ROOT = Path(__file__).resolve().parent
 WATCHLIST_FILE = os.getenv("WEBWATCH_WATCHLIST_FILE", str(REPO_ROOT / "webwatch-watchlist.csv"))
 CACHE_FILE = os.getenv("WEBWATCH_CACHE_FILE", str(REPO_ROOT / "webwatch_cache.json"))  # Stores previous site snapshots
 LOG_FILE = os.getenv("WEBWATCH_LOG_FILE", str(REPO_ROOT / "webwatch_log.txt"))
+RESULTS_FILE = os.getenv("WEBWATCH_RESULTS_FILE", str(REPO_ROOT / "webwatch_results.csv"))  # Detected changes, one row per run
 
 # YOUR BASE44 WEBHOOK URL - Read from GitHub Secrets (or environment variable)
 # On GitHub: Settings > Secrets > Actions > Add BASE44_WEBHOOK_URL
 # Locally: set it manually or use environment variable
-BASE44_WEBHOOK_URL = os.getenv("BASE44_WEBHOOK_URL", "https://your-base44-webhook-url-here.com/webhook")
+# Leave unset to skip the webhook and just log results to RESULTS_FILE
+BASE44_WEBHOOK_URL = os.getenv("BASE44_WEBHOOK_URL", "")
 
 # How much content to check (in characters).
 # Smaller = faster, but might miss subtle changes
@@ -149,12 +152,16 @@ def send_webhook(site_name, url, change_details):
     Sends a webhook to Base44 alerting about the change.
 
     This is how your super agent gets notified!
+    If BASE44_WEBHOOK_URL isn't set, this is skipped (results still go to RESULTS_FILE).
 
     Args:
         site_name (str): Name of the site that changed
         url (str): The URL that changed
         change_details (str): Description of what changed
     """
+    if not BASE44_WEBHOOK_URL:
+        return
+
     payload = {
         "event": "rfp_site_changed",
         "timestamp": datetime.now().isoformat(),
@@ -174,6 +181,29 @@ def send_webhook(site_name, url, change_details):
 
     except Exception as e:
         log_message(f"error: could not send webhook: {str(e)}")
+
+
+def record_results(changes_found):
+    """
+    Appends detected changes to the results CSV so you can review them
+    without relying on the webhook.
+
+    Args:
+        changes_found (list): List of dicts with name/url/old_hash/new_hash
+    """
+    file_exists = Path(RESULTS_FILE).exists()
+    with open(RESULTS_FILE, "a", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=["timestamp", "name", "url", "old_hash", "new_hash"])
+        if not file_exists:
+            writer.writeheader()
+        for change in changes_found:
+            writer.writerow({
+                "timestamp": datetime.now().isoformat(),
+                "name": change["name"],
+                "url": change["url"],
+                "old_hash": change["old_hash"],
+                "new_hash": change["new_hash"],
+            })
 
 
 def read_watchlist():
@@ -209,9 +239,8 @@ def run_monitor():
     log_message("=" * 60)
 
     # Check if webhook is configured
-    if BASE44_WEBHOOK_URL == "https://your-base44-webhook-url-here.com/webhook":
-        log_message("WARNING: Base44 webhook URL not configured!")
-        log_message("   Set BASE44_WEBHOOK_URL environment variable or GitHub secret")
+    if not BASE44_WEBHOOK_URL:
+        log_message("BASE44_WEBHOOK_URL not set - skipping webhook, results will go to " + RESULTS_FILE)
 
     # Step 1: Load what we saw last time
     cache = load_cache()
@@ -270,7 +299,10 @@ def run_monitor():
     # Step 4: Save the cache for next run
     save_cache(updated_cache)
 
-    # Step 5: Summary
+    # Step 5: Record results to CSV
+    record_results(changes_found)
+
+    # Step 6: Summary
     log_message("=" * 60)
     log_message(f"monitor complete. {len(changes_found)} change(s) detected.")
     log_message("=" * 60)
