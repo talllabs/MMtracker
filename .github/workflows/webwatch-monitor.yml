@@ -25,7 +25,7 @@ jobs:
 
       - name: Run WebWatch monitor
         env:
-          BASE44_WEBHOOK_URL: ${{ secrets.BASE44_WEBHOOK_URL }}
+          BASE44_WEBHOOK_URL: ${{ secrets.BASE44_WEBHOOK_URL || 'https://super-rfp-hunter-565f90d3.base44.app/functions/receiveRfpLead' }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python webwatch_monitor.py
