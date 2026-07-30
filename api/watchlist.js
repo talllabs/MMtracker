@@ -206,5 +206,96 @@ module.exports = async (req, res) => {
     return;
   }
 
+  if (req.method === "PUT") {
+    if (!checkPassword(req)) {
+      res.status(401).json({ error: "Incorrect password." });
+      return;
+    }
+    if (!token) {
+      res.status(500).json({
+        error: "GITHUB_TOKEN is not configured on the server. Add it in Vercel project settings to enable saving.",
+      });
+      return;
+    }
+
+    const oldUrl = String(req.body?.oldUrl || "").trim();
+    const entry = {
+      name: String(req.body?.entry?.name || "").trim(),
+      url: String(req.body?.entry?.url || "").trim(),
+    };
+    if (!oldUrl || !entry.url) {
+      res.status(400).json({ error: "oldUrl and entry.url are required." });
+      return;
+    }
+
+    try {
+      const { rows: existing, sha } = await getWatchlistFile(repo, branch, token);
+      const ordered = [];
+      let found = false;
+      for (const row of existing) {
+        if (row.url === oldUrl) {
+          ordered.push(entry);
+          found = true;
+        } else if (row.url !== entry.url) {
+          ordered.push(row);
+        }
+        // if row.url === entry.url (renaming onto an existing URL), drop the duplicate
+      }
+      if (!found) {
+        res.status(404).json({ error: "That URL was not found in the watchlist (someone else may have edited it)." });
+        return;
+      }
+      await putWatchlistFile(
+        repo,
+        branch,
+        token,
+        ordered,
+        sha,
+        `Edit WebWatch watchlist entry via dashboard (${oldUrl} -> ${entry.url})`
+      );
+      res.status(200).json({ rows: ordered, total: ordered.length });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+    return;
+  }
+
+  if (req.method === "DELETE") {
+    if (!checkPassword(req)) {
+      res.status(401).json({ error: "Incorrect password." });
+      return;
+    }
+    if (!token) {
+      res.status(500).json({
+        error: "GITHUB_TOKEN is not configured on the server. Add it in Vercel project settings to enable saving.",
+      });
+      return;
+    }
+
+    const urls = new Set((Array.isArray(req.body?.urls) ? req.body.urls : []).map((u) => String(u).trim()));
+    if (urls.size === 0) {
+      res.status(400).json({ error: "No URLs provided to delete." });
+      return;
+    }
+
+    try {
+      const { rows: existing, sha } = await getWatchlistFile(repo, branch, token);
+      const remaining = existing.filter((r) => !urls.has(r.url));
+      const removed = existing.length - remaining.length;
+      await putWatchlistFile(
+        repo,
+        branch,
+        token,
+        remaining,
+        sha,
+        `Remove ${removed} URL(s) from WebWatch watchlist via dashboard`
+      );
+      res.status(200).json({ rows: remaining, removed, total: remaining.length });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+    return;
+  }
+
   res.status(405).json({ error: "Method not allowed" });
 };

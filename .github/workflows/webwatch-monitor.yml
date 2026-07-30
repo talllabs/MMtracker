@@ -26,6 +26,7 @@ jobs:
       - name: Run WebWatch monitor
         env:
           BASE44_WEBHOOK_URL: ${{ secrets.BASE44_WEBHOOK_URL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python webwatch_monitor.py
 
       - name: Commit updated cache, log, and results

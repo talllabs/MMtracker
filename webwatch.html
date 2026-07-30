@@ -216,6 +216,7 @@
 
   <div class="stats">
     <div class="stat"><div class="label">Sites Watched</div><div class="value" id="statSites">–</div></div>
+    <div class="stat"><div class="label">Last Run Coverage</div><div class="value" id="statCoverage" style="font-size:1rem;">–</div></div>
     <div class="stat changes"><div class="label">Changes Logged</div><div class="value" id="statChanges">–</div></div>
     <div class="stat"><div class="label">Last Run</div><div class="value" id="statLastRun" style="font-size:1rem;">–</div></div>
     <div class="stat ok"><div class="label">Status</div><div class="value" id="statStatus" style="font-size:1rem;">–</div></div>
@@ -253,6 +254,7 @@
       <label class="btn" for="csvFile">Bulk import CSV</label>
       <input id="csvFile" type="file" accept=".csv,text/csv" style="display:none;" />
       <span class="mono" id="csvFileName">name,url columns expected</span>
+      <button type="button" id="deleteSelectedBtn" class="btn" style="margin-left:auto;color:var(--bad);border-color:var(--bad);display:none;">Delete Selected</button>
     </div>
     <div class="status-msg" id="watchlistStatus"></div>
     <div class="panel-body" id="watchlistBody">
@@ -395,14 +397,24 @@
       }
 
       const sorted = rows.slice().reverse(); // most recent first
-      let html = '<table><thead><tr><th>Timestamp</th><th>Site</th><th>URL</th><th>Old Hash</th><th>New Hash</th></tr></thead><tbody>';
+      let html = '<table><thead><tr><th>Timestamp</th><th>Site</th><th>Meaningful?</th><th>What Changed</th></tr></thead><tbody>';
       for (const r of sorted) {
+        const meaningful = (r.meaningful || '').toLowerCase() === 'yes';
+        const meaningfulBadge = r.meaningful
+          ? `<span class="badge" style="${meaningful ? 'color:var(--good);' : 'color:var(--muted);'}">${meaningful ? 'Yes - sent to webhook' : 'No - filtered out'}</span>`
+          : '<span class="badge">–</span>';
+        const diffId = 'diff-' + Math.random().toString(36).slice(2);
         html += `<tr>
-          <td>${escapeHtml(r.timestamp || '')}</td>
-          <td>${escapeHtml(r.name || '')}</td>
-          <td><a class="site-link" href="${escapeAttr(r.url || '#')}" target="_blank" rel="noopener">${escapeHtml(r.url || '')}</a></td>
-          <td class="mono">${escapeHtml((r.old_hash || '').slice(0, 10))}…</td>
-          <td class="mono">${escapeHtml((r.new_hash || '').slice(0, 10))}…</td>
+          <td style="white-space:nowrap;">${escapeHtml(r.timestamp || '')}</td>
+          <td>
+            <div>${escapeHtml(r.name || '')}</div>
+            <a class="site-link" href="${escapeAttr(r.url || '#')}" target="_blank" rel="noopener" style="font-size:0.75rem;">${escapeHtml(r.url || '')}</a>
+          </td>
+          <td>${meaningfulBadge}</td>
+          <td>
+            <div>${escapeHtml(r.summary || 'Content changed (no summary available).')}</div>
+            ${r.diff ? `<details style="margin-top:6px;"><summary style="cursor:pointer;color:var(--accent);font-size:0.75rem;">View diff</summary><pre class="mono" style="white-space:pre-wrap;margin-top:6px;">${escapeHtml(r.diff)}</pre></details>` : ''}
+          </td>
         </tr>`;
       }
       html += '</tbody></table>';
@@ -420,11 +432,13 @@
     try {
       const text = await fetchText('webwatch_log.txt');
       const lines = text.replace(/\r\n/g, '\n').split('\n').filter(l => l.length > 0);
-      const lastLines = lines.slice(-200);
+      const lastLines = lines.slice(-500);
       pre.innerHTML = lastLines.map(l => `<span class="log-line ${classifyLogLine(l)}">${escapeHtml(l)}</span>`).join('\n');
       meta.textContent = `${lines.length} lines total, showing last ${lastLines.length}`;
 
-      // Derive last run timestamp + status from the log
+      // Derive last run timestamp + status from the FULL log (never the
+      // truncated display slice above), so stats are always accurate even
+      // if a single run produces more lines than we render.
       const timestampMatch = [...lines].reverse().find(l => /^\[/.test(l));
       if (timestampMatch) {
         const m = timestampMatch.match(/^\[([^\]]+)\]/);
@@ -432,18 +446,33 @@
       }
       const completeLine = [...lines].reverse().find(l => /monitor complete/i.test(l));
       if (completeLine) {
-        const changeCount = completeLine.match(/(\d+)\s+change/);
-        document.getElementById('statStatus').textContent = changeCount && changeCount[1] !== '0'
-          ? `⚠ ${changeCount[1]} change(s)`
+        // New format: "monitor complete. watchlist=98 checked=93 skipped=5 changes=2 meaningful=1"
+        const watchlistM = completeLine.match(/watchlist=(\d+)/);
+        const checkedM = completeLine.match(/checked=(\d+)/);
+        const skippedM = completeLine.match(/skipped=(\d+)/);
+        const changesM = completeLine.match(/changes=(\d+)/) || completeLine.match(/(\d+)\s+change/);
+
+        if (checkedM && watchlistM) {
+          document.getElementById('statCoverage').textContent =
+            `${checkedM[1]} / ${watchlistM[1]} checked${skippedM ? ` (${skippedM[1]} skipped)` : ''}`;
+        } else {
+          document.getElementById('statCoverage').textContent = '–';
+        }
+
+        const changeCount = changesM ? changesM[1] : '0';
+        document.getElementById('statStatus').textContent = changeCount !== '0'
+          ? `⚠ ${changeCount} change(s)`
           : '✓ No changes';
       } else {
         document.getElementById('statStatus').textContent = 'Unknown';
+        document.getElementById('statCoverage').textContent = '–';
       }
     } catch (e) {
       pre.textContent = `Couldn't load webwatch_log.txt (${e.message}).`;
       meta.textContent = '–';
       document.getElementById('statLastRun').textContent = '–';
       document.getElementById('statStatus').textContent = '–';
+      document.getElementById('statCoverage').textContent = '–';
     }
   }
 
@@ -513,28 +542,89 @@
   const watchlistBody = document.getElementById('watchlistBody');
   const watchlistCount = document.getElementById('watchlistCount');
   const watchlistStatus = document.getElementById('watchlistStatus');
+  const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
 
   function setWatchlistStatus(message, kind) {
     watchlistStatus.textContent = message || '';
     watchlistStatus.className = 'status-msg' + (kind ? ' ' + kind : '');
   }
 
+  function updateDeleteButtonVisibility() {
+    const anyChecked = watchlistBody.querySelectorAll('input.row-select:checked').length > 0;
+    deleteSelectedBtn.style.display = anyChecked ? '' : 'none';
+  }
+
   function renderWatchlist(rows) {
     watchlistCount.textContent = `${rows.length} site${rows.length === 1 ? '' : 's'}`;
     document.getElementById('statSites').textContent = rows.length;
+    deleteSelectedBtn.style.display = 'none';
     if (rows.length === 0) {
       watchlistBody.innerHTML = '<div class="empty">No URLs yet. Add one above or bulk import a CSV.</div>';
       return;
     }
-    let html = '<table><thead><tr><th>Name</th><th>URL</th></tr></thead><tbody>';
+    let html = `<table><thead><tr>
+      <th style="width:28px;"><input type="checkbox" id="selectAllRows" /></th>
+      <th>Name</th><th>URL</th><th style="width:120px;">Actions</th>
+    </tr></thead><tbody>`;
     for (const r of rows) {
-      html += `<tr>
-        <td>${escapeHtml(r.name || '')}</td>
-        <td><a class="site-link" href="${escapeAttr(r.url)}" target="_blank" rel="noopener">${escapeHtml(r.url)}</a></td>
+      const safeUrl = escapeAttr(r.url);
+      html += `<tr data-url="${safeUrl}">
+        <td><input type="checkbox" class="row-select" value="${safeUrl}" /></td>
+        <td class="cell-name">${escapeHtml(r.name || '')}</td>
+        <td class="cell-url"><a class="site-link" href="${safeUrl}" target="_blank" rel="noopener">${escapeHtml(r.url)}</a></td>
+        <td>
+          <button type="button" class="btn edit-row-btn" style="padding:4px 10px;font-size:0.75rem;">Edit</button>
+          <button type="button" class="btn delete-row-btn" style="padding:4px 10px;font-size:0.75rem;color:var(--bad);border-color:var(--bad);">Delete</button>
+        </td>
       </tr>`;
     }
     html += '</tbody></table>';
     watchlistBody.innerHTML = html;
+
+    document.getElementById('selectAllRows').addEventListener('change', (e) => {
+      watchlistBody.querySelectorAll('input.row-select').forEach(cb => { cb.checked = e.target.checked; });
+      updateDeleteButtonVisibility();
+    });
+    watchlistBody.querySelectorAll('input.row-select').forEach(cb => {
+      cb.addEventListener('change', updateDeleteButtonVisibility);
+    });
+    watchlistBody.querySelectorAll('.delete-row-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const tr = e.target.closest('tr');
+        const url = tr.dataset.url;
+        const name = tr.querySelector('.cell-name').textContent;
+        if (!confirm(`Remove "${name || url}" from the watchlist?`)) return;
+        await deleteEntries([url]);
+      });
+    });
+    watchlistBody.querySelectorAll('.edit-row-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => startEditRow(e.target.closest('tr')));
+    });
+  }
+
+  function startEditRow(tr) {
+    const oldUrl = tr.dataset.url;
+    const nameCell = tr.querySelector('.cell-name');
+    const urlCell = tr.querySelector('.cell-url');
+    const currentName = nameCell.textContent;
+    const currentUrl = tr.querySelector('a.site-link').getAttribute('href');
+
+    nameCell.innerHTML = `<input type="text" class="edit-name" value="${escapeAttr(currentName)}" style="width:100%;" />`;
+    urlCell.innerHTML = `<input type="text" class="edit-url" value="${escapeAttr(currentUrl)}" style="width:100%;" />`;
+
+    const actionsCell = tr.children[3];
+    actionsCell.innerHTML = `
+      <button type="button" class="btn primary save-row-btn" style="padding:4px 10px;font-size:0.75rem;">Save</button>
+      <button type="button" class="btn cancel-row-btn" style="padding:4px 10px;font-size:0.75rem;">Cancel</button>
+    `;
+
+    actionsCell.querySelector('.cancel-row-btn').addEventListener('click', () => loadWatchlist());
+    actionsCell.querySelector('.save-row-btn').addEventListener('click', async () => {
+      const newName = tr.querySelector('.edit-name').value.trim();
+      const newUrl = tr.querySelector('.edit-url').value.trim();
+      if (!newUrl) { setWatchlistStatus('URL cannot be empty.', 'error'); return; }
+      await editEntry(oldUrl, { name: newName, url: newUrl });
+    });
   }
 
   async function loadWatchlist() {
@@ -567,6 +657,53 @@
       setWatchlistStatus(`Failed to save: ${e.message}`, 'error');
     }
   }
+
+  async function editEntry(oldUrl, entry) {
+    setWatchlistStatus('Saving…');
+    try {
+      const res = await fetch('/api/watchlist', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'X-WebWatch-Password': PASSWORD },
+        body: JSON.stringify({ oldUrl, entry }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setWatchlistStatus(data.error || 'Failed to save edit.', 'error');
+        return;
+      }
+      renderWatchlist(data.rows || []);
+      setWatchlistStatus('Entry updated.', 'ok');
+    } catch (e) {
+      setWatchlistStatus(`Failed to save edit: ${e.message}`, 'error');
+    }
+  }
+
+  async function deleteEntries(urls) {
+    setWatchlistStatus('Deleting…');
+    try {
+      const res = await fetch('/api/watchlist', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', 'X-WebWatch-Password': PASSWORD },
+        body: JSON.stringify({ urls }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setWatchlistStatus(data.error || 'Failed to delete.', 'error');
+        return;
+      }
+      renderWatchlist(data.rows || []);
+      setWatchlistStatus(`Removed ${data.removed} URL(s) — ${data.total} remaining.`, 'ok');
+    } catch (e) {
+      setWatchlistStatus(`Failed to delete: ${e.message}`, 'error');
+    }
+  }
+
+  deleteSelectedBtn.addEventListener('click', async () => {
+    const urls = Array.from(watchlistBody.querySelectorAll('input.row-select:checked')).map(cb => cb.value);
+    if (urls.length === 0) return;
+    if (!confirm(`Remove ${urls.length} selected URL(s) from the watchlist?`)) return;
+    await deleteEntries(urls);
+  });
 
   addForm.addEventListener('submit', async (e) => {
     e.preventDefault();
