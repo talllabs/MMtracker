@@ -102,13 +102,14 @@
   .panel-header h2 { font-size: 1rem; margin: 0; }
   .panel-body { padding: 0; }
 
-  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-  th, td { text-align: left; padding: 10px 16px; border-bottom: 1px solid var(--border); }
+  table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 0.85rem; }
+  th, td { text-align: left; padding: 10px 16px; border-bottom: 1px solid var(--border); overflow-wrap: break-word; word-break: break-word; }
   th { color: var(--muted); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em; }
   tr:last-child td { border-bottom: none; }
   td.mono, .mono { font-family: var(--mono); font-size: 0.78rem; color: var(--muted); }
-  a.site-link { color: var(--accent); text-decoration: none; }
+  a.site-link { color: var(--accent); text-decoration: none; overflow-wrap: break-word; word-break: break-word; }
   a.site-link:hover { text-decoration: underline; }
+  .panel-body { overflow-x: auto; }
 
   pre.log {
     margin: 0;
@@ -397,7 +398,7 @@
       }
 
       const sorted = rows.slice().reverse(); // most recent first
-      let html = '<table><thead><tr><th>Timestamp</th><th>Site</th><th>Meaningful?</th><th>What Changed</th></tr></thead><tbody>';
+      let html = '<table><colgroup><col style="width:14%"><col style="width:18%"><col style="width:12%"><col style="width:56%"></colgroup><thead><tr><th>Timestamp</th><th>Site</th><th>Meaningful?</th><th>What Changed</th></tr></thead><tbody>';
       for (const r of sorted) {
         const meaningful = (r.meaningful || '').toLowerCase() === 'yes';
         const meaningfulBadge = r.meaningful
