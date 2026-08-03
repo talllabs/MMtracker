@@ -1,4 +1,4 @@
-timestamp,name,url,old_hash,new_hash
+timestamp,name,url,meaningful,summary,diff,old_hash,new_hash
 2026-07-30T21:03:00.917184,LinkedIn Tourism RFP Search,https://www.linkedin.com/search/results/content/?keywords=rfp%20tourism&origin=FACETED_SEARCH&sortBy=%5B%22date_posted%22%5D&datePosted=%5B%22past-week%22%5D,aa4dbeb22d57a6fcf434a71bea8ea39e39041b29c8ac235e1acff986c921401f,28b74164742b4d40735070df2f1f5e6b21afe14a69698da24f7ec91047b3fb5d
 2026-07-30T21:03:00.917210,LinkedIn Search,https://www.linkedin.com/search/results/content/,f9fc3d8a45563b1085b6d0bbc14fa07d0e1a4bff8193cbd54d0769b78b58af3c,3bca1e1e64ee6d32e8fb067fe29ebba0edde87c8dc0022292855f736911595f3
 2026-07-30T21:03:00.917226,GIZ Procurement,https://ausschreibungen.giz.de/Satellite/company/announcements/categoryOverview.do?method=showTable&cpvCode=79400000-8,497a6a52878a22a07bdfca55b142895295923b98e3e76af5643cc0b0a4ae2d23,56184daa5bb2009d5fb0ad8693fb69a12c42ca8bdc69ca5cc8174d52cdf98f2d
