@@ -7,8 +7,11 @@ What it does:
 - Reads your watchlist (CSV)
 - Checks each site for updates
 - Compares with previous data (using cleaned text, not raw HTML)
-- When content changes, optionally asks an LLM whether the change is a
-  meaningful new RFP/tender opportunity (vs. a date stamp, ad rotation, etc.)
+- With an LLM key configured (OPENAI_API_KEY or ANTHROPIC_API_KEY), extracts
+  the individual RFP/tender listings on each page and alerts only when a
+  genuinely NEW listing appears - not on any whole-page byte change - so
+  login walls, cookie banners, ad rotation, and redirects don't count as
+  "changes". Without a key, falls back to whole-page diff + always-meaningful.
 - Sends the changed content (not just the URL) to the Base44 webhook when
   the change is meaningful
 - Records every detected change - with a summary of what changed - to a
@@ -302,22 +305,148 @@ def classify_change(site_name, old_text, new_text):
         return True, f"LLM classification failed ({str(e)}) - content changed, review manually."
 
 
+def build_extraction_prompt(site_name, text):
+    """
+    Builds the shared prompt used to ask an LLM to pull out individual
+    RFP/tender/bid listings from a page, instead of treating the whole page
+    as one blob. This is what lets us alert on "a new listing appeared"
+    instead of "the page's bytes changed" - which is what was causing
+    noise from login walls, cookie banners, ad rotation, and redirects.
+    """
+    return f"""You are scanning the page below - from a site called "{site_name}" that is
+monitored for RFP / tender / bid / procurement opportunities - and need to
+extract a list of the INDIVIDUAL opportunity listings visible on it (each
+distinct RFP, tender, bid notice, or procurement opportunity).
+
+Rules:
+- If this page is a login wall, error page, redirect/interstitial, cookie
+  banner, CAPTCHA challenge, or a generic page with no actual listings
+  visible, return an empty array.
+- Each array entry should be a short string identifying ONE listing -
+  ideally "Title (deadline or reference ID if shown)". Do not include
+  navigation links, ads, or unrelated site content.
+- Do not invent listings that aren't actually on the page.
+
+Respond with ONLY a JSON array of strings, no other text. Example:
+["Downtown Tourism Marketing RFP (due Sept 15, 2026)", "Visitor Center Signage Bid #2026-114"]
+or [] if there are no real listings on this page.
+
+PAGE TEXT:
+{text[:3000]}"""
+
+
+def parse_extraction_json(site_name, text):
+    """
+    Extracts and parses the JSON array of listing strings an LLM was asked
+    to return. Falls back to an empty list (treated as "couldn't extract,
+    don't alert") if the response can't be parsed - noisy false positives
+    from a broken parse are worse than a missed run here, since the next
+    run will try again.
+    """
+    match = re.search(r"\[.*\]", text, re.S)
+    if not match:
+        log_message(f"warning: listing extraction response for {site_name} wasn't valid JSON")
+        return []
+    try:
+        parsed = json.loads(match.group(0))
+        return [str(item).strip() for item in parsed if str(item).strip()]
+    except Exception:
+        log_message(f"warning: listing extraction response for {site_name} could not be parsed as JSON")
+        return []
+
+
+def extract_with_openai(site_name, text):
+    prompt = build_extraction_prompt(site_name, text)
+    response = requests.post(
+        "https://api.openai.com/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": OPENAI_MODEL,
+            "max_tokens": 600,
+            "messages": [{"role": "user", "content": prompt}],
+        },
+        timeout=20,
+    )
+    response.raise_for_status()
+    data = response.json()
+    text_out = data["choices"][0]["message"]["content"]
+    return parse_extraction_json(site_name, text_out)
+
+
+def extract_with_anthropic(site_name, text):
+    prompt = build_extraction_prompt(site_name, text)
+    response = requests.post(
+        "https://api.anthropic.com/v1/messages",
+        headers={
+            "x-api-key": ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        },
+        json={
+            "model": ANTHROPIC_MODEL,
+            "max_tokens": 600,
+            "messages": [{"role": "user", "content": prompt}],
+        },
+        timeout=20,
+    )
+    response.raise_for_status()
+    data = response.json()
+    text_out = "".join(block.get("text", "") for block in data.get("content", []))
+    return parse_extraction_json(site_name, text_out)
+
+
+def extract_listings(site_name, text):
+    """
+    Asks an LLM to extract individual RFP/tender listings from a page's
+    text, so changes can be compared listing-by-listing instead of as one
+    whole-page blob. Requires OPENAI_API_KEY or ANTHROPIC_API_KEY; without
+    one, returns None (the caller falls back to whole-page diff+classify).
+
+    Args:
+        site_name (str): Name of the site
+        text (str): Cleaned page text
+
+    Returns:
+        list[str] or None: Extracted listing strings, or None if no LLM
+            key is configured or extraction failed
+    """
+    if not OPENAI_API_KEY and not ANTHROPIC_API_KEY:
+        return None
+
+    try:
+        if OPENAI_API_KEY:
+            return extract_with_openai(site_name, text)
+        return extract_with_anthropic(site_name, text)
+    except Exception as e:
+        log_message(f"warning: listing extraction failed for {site_name}: {str(e)}")
+        return None
+
+
+def normalize_listing(listing):
+    """Loose-normalizes a listing string so trivial formatting differences don't register as 'new'."""
+    return re.sub(r"[^a-z0-9]+", " ", listing.lower()).strip()
+
+
 def load_cache():
     """
     Reads the cache file (what we saw last time).
 
     Returns:
-        dict: {"url": {"hash": "...", "content": "..."}}
+        dict: {"url": {"hash": "...", "content": "...", "listings": [...]}}
     """
     if Path(CACHE_FILE).exists():
         with open(CACHE_FILE, "r") as f:
             data = json.load(f)
-        # Migrate from the old format ({"url": "hash"}) transparently
+        # Migrate from older formats transparently
         migrated = {}
         for url, value in data.items():
             if isinstance(value, str):
-                migrated[url] = {"hash": value, "content": ""}
+                migrated[url] = {"hash": value, "content": "", "listings": None}
             else:
+                value.setdefault("listings", None)
                 migrated[url] = value
         return migrated
     return {}  # Empty dict if no cache yet
@@ -486,16 +615,46 @@ def run_monitor():
         previous_entry = cache.get(url) or {}
         previous_hash = previous_entry.get("hash")
         previous_content = previous_entry.get("content", "")
+        previous_listings = previous_entry.get("listings")
 
-        # Store this snapshot for next time
-        updated_cache[url] = {"hash": current_hash, "content": content}
+        listings_enabled = bool(OPENAI_API_KEY or ANTHROPIC_API_KEY)
 
-        # Did it change?
         if previous_hash is None:
+            # First time monitoring this site: establish a baseline, no alert.
             log_message(f"{site_name}: first time monitoring")
-        elif current_hash != previous_hash:
-            diff = build_diff(previous_content, content)
-            meaningful, summary = classify_change(site_name, previous_content, content)
+            current_listings = extract_listings(site_name, content) if listings_enabled else None
+            updated_cache[url] = {"hash": current_hash, "content": content, "listings": current_listings}
+
+        elif current_hash == previous_hash:
+            # Byte-identical to last time: nothing changed, no need to re-extract.
+            log_message(f"{site_name}: no change")
+            updated_cache[url] = {"hash": current_hash, "content": content, "listings": previous_listings}
+
+        elif listings_enabled and previous_listings is not None:
+            # Page changed AND we have a previous listing set to compare against:
+            # extract listings from the new content and alert only on genuinely
+            # new listings, not on any byte-level change (login walls, cookie
+            # banners, ad rotation, and redirects no longer count as "changes").
+            current_listings = extract_listings(site_name, content)
+            updated_cache[url] = {"hash": current_hash, "content": content, "listings": current_listings}
+
+            if current_listings is None:
+                # Extraction failed - fall back to whole-page classification for this run only.
+                diff = build_diff(previous_content, content)
+                meaningful, summary = classify_change(site_name, previous_content, content)
+            else:
+                previous_normalized = {normalize_listing(l) for l in previous_listings}
+                new_listings = [l for l in current_listings if normalize_listing(l) not in previous_normalized]
+                diff = build_diff(previous_content, content)
+
+                if new_listings:
+                    meaningful = True
+                    summary = "New listing(s) found: " + "; ".join(new_listings[:5])
+                    if len(new_listings) > 5:
+                        summary += f" (+{len(new_listings) - 5} more)"
+                else:
+                    meaningful = False
+                    summary = "Page content changed but no new listings were detected (likely layout, cosmetic, or a login/redirect page)."
 
             if meaningful:
                 log_message(f"CHANGE DETECTED (meaningful): {site_name} - {summary}")
@@ -514,8 +673,32 @@ def run_monitor():
 
             if meaningful:
                 send_webhook(site_name, url, summary, diff, previous_hash, current_hash)
+
         else:
-            log_message(f"{site_name}: no change")
+            # No LLM key configured (or no baseline listings yet): fall back to
+            # the whole-page diff + classify-or-always-meaningful behavior.
+            diff = build_diff(previous_content, content)
+            meaningful, summary = classify_change(site_name, previous_content, content)
+            current_listings = extract_listings(site_name, content) if listings_enabled else None
+            updated_cache[url] = {"hash": current_hash, "content": content, "listings": current_listings}
+
+            if meaningful:
+                log_message(f"CHANGE DETECTED (meaningful): {site_name} - {summary}")
+            else:
+                log_message(f"CHANGE DETECTED (not meaningful, skipping webhook): {site_name} - {summary}")
+
+            changes_found.append({
+                "name": site_name,
+                "url": url,
+                "old_hash": previous_hash,
+                "new_hash": current_hash,
+                "meaningful": meaningful,
+                "summary": summary,
+                "diff": diff,
+            })
+
+            if meaningful:
+                send_webhook(site_name, url, summary, diff, previous_hash, current_hash)
 
     # Step 4: Save the cache for next run
     save_cache(updated_cache)
