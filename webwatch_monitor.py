@@ -195,6 +195,40 @@ def build_diff(old_text, new_text, max_chars=1500):
     return diff
 
 
+def summarize_diff_added_lines(old_text, new_text, max_lines=5, max_chars=280):
+    """
+    Builds a short, plain-English preview of what was actually added to a
+    page, for use as the log/webhook summary when no LLM key is configured.
+    Pulls out only the added ("+") lines from the unified diff so the log
+    shows real new content instead of a generic "content changed" message.
+
+    Args:
+        old_text (str): Previously seen content
+        new_text (str): Newly fetched content
+        max_lines (int): Max number of added lines to include
+        max_chars (int): Truncate the combined preview to this many characters
+
+    Returns:
+        str: A human-readable summary of the added content
+    """
+    diff = build_diff(old_text, new_text, max_chars=100000)
+    added_lines = [
+        line[1:].strip() for line in diff.splitlines()
+        if line.startswith("+") and not line.startswith("+++") and line[1:].strip()
+    ]
+
+    if not added_lines:
+        return "Content changed - no clearly new text detected, review manually."
+
+    preview = " | ".join(added_lines[:max_lines])
+    if len(preview) > max_chars:
+        preview = preview[:max_chars] + "..."
+    if len(added_lines) > max_lines:
+        preview += f" (+{len(added_lines) - max_lines} more added lines)"
+
+    return f"Content added: {preview}"
+
+
 def build_classification_prompt(site_name, old_text, new_text):
     """
     Builds the shared prompt used to ask an LLM whether a detected change
@@ -294,7 +328,7 @@ def classify_change(site_name, old_text, new_text):
         tuple: (meaningful: bool, summary: str)
     """
     if not OPENAI_API_KEY and not ANTHROPIC_API_KEY:
-        return True, "LLM classification not configured - content changed, review manually."
+        return True, summarize_diff_added_lines(old_text, new_text)
 
     try:
         if OPENAI_API_KEY:
