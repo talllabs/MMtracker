@@ -1237,3 +1237,37 @@ timestamp,name,url,meaningful,summary,diff,old_hash,new_hash
 -59 results Filters Order By Solicitation Title (A-Z) Solicitation Title (Z-A) Location (A-Z) Location (Z-A) Publication 
 +60 results Filters Order By Solicitation Title (A-Z) Solicitation Title (Z-A) Location (A-Z) Location (Z-A) Publication 
  Date (Oldest first) Publication Date (Newest first) Closing Date (Oldest first) Closing Date (Newest first) Artwork Cons",cd500eaefaedb64122e9cff5841950c121c90dd02377faf248dcd315839bec2f,ca16b13fa944580dc50b5e5a4ba16bb950aa9690bd7da46f127df401fe731c75
+2026-08-03T23:43:47.961394,Patrimonio Natural,https://www.patrimonionatural.org.co/convocatorias/,yes,Content added: t Mi Intranet Convocatorias Conoce las convocatorias que ofrece Patrimonio Natural Tipo de solicitud Convocatoria (152) | Corazón de la Amazonía (226) De Raíces a Mareas (5) Fontur (20) Herencia Colombia (24) Hotspot Andes Tropicales (1) IKI | quí las convocatorias disponibles. A... (+18 more added lines),"--- 
++++ 
+@@ -5,3 +5,3 @@
+ ncia ESAL Convocatorias Notificaciones Temas Estratégicos y Proyectos Biblioteca Virtual Noticias Contacto PQRRS Intrane
+-t Mi Intranet Convocatorias Conoce las convocatorias que ofrece Patrimonio Natural Tipo de solicitud Convocatoria (151) 
++t Mi Intranet Convocatorias Conoce las convocatorias que ofrece Patrimonio Natural Tipo de solicitud Convocatoria (152) 
+ Licitación (10) Licitación pública Nacional (68) Licitación Pública Internacional (1) Manifestación de interés (146) Ofe
+@@ -9,3 +9,3 @@
+ servicios de no consultoría (32) Programas y Temas estratégicos Amazonía Biocultural (44) Conservación y Gobernanza (1) 
+-Corazón de la Amazonía (225) De Raíces a Mareas (5) Fontur (20) Herencia Colombia (24) Hotspot Andes Tropicales (1) IKI 
++Corazón de la Amazonía (226) De Raíces a Mareas (5) Fontur (20) Herencia Colombia (24) Hotspot Andes Tropicales (1) IKI 
+ (16) KFW – Biodiversidad y Áreas Protegidas (9) Lago de Tota (3) Páramos para la vida (17) Patrimonio Natural (32) Progr
+@@ -13,22 +13,22 @@
+  conservación (6) Proyectos (1) Proyectos en ejecución (1) Visión Amazonía (83) Limpiar filtros Convocatorias Consulta a
+-quí las convocatorias disponibles. Abierta Inicio: 03/08/2026 12:00 am Cierre: 2026-08-21 17:00:00 Convocatoria Equipos 
+-tecnológicos Días Horas Esta convocatoria se encuentra cerrada y no recibe más aplicaciones. Abierta Inicio: 03/08/2026 
+-1:00 pm Cierre: 2026-08-19 17:00:00 Convocatoria Prestar servicios profesionales para realizar ... (truncated)",5cb5545355205fb8c5c52241dc2626a6be1c74cdd6f78f9df49a00154201070d,6a3ab008552b96a8fbf7933d7183c27c18467008a78fbcc18027e6b4ae15c21b
+2026-08-03T23:43:47.961447,BidNet Tourism,https://www.bidnetdirect.com/public/solicitations/open?keywords=tourism&searchContentGroupId=&publishDate=&solSearchStatus=openSolicitationsTab&sortBy=closingDate&sortDirection=DESC&pageNumberSelect=1,yes,Content added: Search View Open tourism Bids &amp; RFPs (58 results) Filter by X Mark tourism All Member Agency Bids State & Local Bids | 58 results Filters Order By Solicitation Title (A-Z) Solicitation Title (Z-A) Location (A-Z) Location (Z-A) Publication | 09/13/2027 6011229005 Tourist Lodgi...,"--- 
++++ 
+@@ -3,3 +3,3 @@
+ gencies Purchasing Groups Vendor Solutions Buyer Solutions Login Login Vendor Registration Vendor Registration ​ Home / 
+-Search View Open tourism Bids &amp; RFPs (60 results) Filter by X Mark tourism All Member Agency Bids State & Local Bids
++Search View Open tourism Bids &amp; RFPs (58 results) Filter by X Mark tourism All Member Agency Bids State & Local Bids
+  Federal Bids Accommodation and Food Services Administrative and Support and Waste Management and Remediation Services A
+@@ -26,3 +26,3 @@
+ nia Wisconsin Wyoming All Last 24 Hours Last Week Open Solicitations Closed Solicitations Filtered by tourism Clear All 
+-60 results Filters Order By Solicitation Title (A-Z) Solicitation Title (Z-A) Location (A-Z) Location (Z-A) Publication 
++58 results Filters Order By Solicitation Title (A-Z) Solicitation Title (Z-A) Location (A-Z) Location (Z-A) Publication 
+ Date (Oldest first) Publication Date (Newest first) Closing Date (Oldest first) Closing Date (Newest first) Artwork Cons
+@@ -32,3 +32,3 @@
+ 4/2027 22633835710 CULTURAL PROGRAMMING AND EVENT PRODUCER SERVICES Florida 1 year(s) left Published 04/07/2025 Closing 
+-09/13/2027 6011229005 Tourist Lodging Services California 59 day(s) left Published 03/06/2026 Closing 10/01/2026 4439065
++09/13/2027 6011229005 Tourist Lodging Services California 58 day(s) left Published 03/06/2026 Closing 10/01/2026 4439065
+ 24675 Modeling Of The Epcot Energy Plant",ca16b13fa944580dc50b5e5a4ba16bb950aa9690bd7da46f127df401fe731c75,3956c0019ce6417fc71ad16fabaaa18cd5dc2d47a2842b234f1bb19908269588
