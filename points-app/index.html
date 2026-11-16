@@ -1,0 +1,746 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#f6f5f2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121316" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Points">
+<title>Points Wallet</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%232f5bea'/%3E%3Cpath d='M18 40l14-20 14 20' stroke='white' stroke-width='6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #f6f5f2;
+    --surface: #ffffff;
+    --surface-2: #efeee9;
+    --text: #16171a;
+    --muted: #6b6d74;
+    --line: #e3e1db;
+    --accent: #2f5bea;
+    --accent-ink: #ffffff;
+    --fresh: #1f8a4c;
+    --aging: #b7791f;
+    --stale: #c2412d;
+    --never: #8a8c93;
+    --fresh-bg: #e3f3e9;
+    --aging-bg: #fbf0dc;
+    --stale-bg: #fbe5e1;
+    --never-bg: #ececee;
+    --shadow: 0 1px 2px rgba(20,20,30,.06), 0 4px 16px rgba(20,20,30,.06);
+    --radius: 18px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121316;
+      --surface: #1b1d21;
+      --surface-2: #24262b;
+      --text: #f2f2f3;
+      --muted: #9a9ca3;
+      --line: #2d3036;
+      --accent: #6e8fff;
+      --accent-ink: #0b1020;
+      --fresh: #4cc27f;
+      --aging: #e3a948;
+      --stale: #f07a64;
+      --never: #8a8c93;
+      --fresh-bg: #173324;
+      --aging-bg: #3a2d14;
+      --stale-bg: #3d1e19;
+      --never-bg: #2a2c31;
+      --shadow: 0 1px 2px rgba(0,0,0,.3);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  .num { font-variant-numeric: tabular-nums; }
+  .hidden { display: none !important; }
+  .wrap { max-width: 560px; margin: 0 auto; padding: 0 16px; }
+
+  /* ---------- Login ---------- */
+  #login { min-height: 100dvh; display: grid; place-items: center; padding: 24px 16px; }
+  .login-card { width: 100%; max-width: 360px; text-align: center; }
+  .logo { width: 64px; height: 64px; border-radius: 18px; background: var(--accent); display: grid; place-items: center; margin: 0 auto 16px; }
+  .login-card h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -.02em; }
+  .login-card p { color: var(--muted); margin: 0 0 24px; }
+  .field { width: 100%; padding: 14px 16px; border-radius: 14px; border: 1.5px solid var(--line); background: var(--surface); outline: none; font-size: 17px; }
+  .field:focus { border-color: var(--accent); }
+  .error { color: var(--stale); min-height: 22px; margin: 10px 0 0; font-size: 15px; }
+
+  .btn { border: 0; border-radius: 14px; padding: 14px 18px; font-weight: 600; font-size: 17px; background: var(--surface-2); min-height: 50px; }
+  .btn-primary { background: var(--accent); color: var(--accent-ink); }
+  .btn-block { width: 100%; }
+  .btn:disabled { opacity: .5; }
+  .btn-danger { background: transparent; color: var(--stale); }
+  .btn-quiet { background: transparent; color: var(--accent); padding: 8px 10px; min-height: 0; font-size: 15px; }
+
+  /* ---------- Header ---------- */
+  header { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); padding-top: env(safe-area-inset-top); }
+  .head-row { display: flex; align-items: center; justify-content: space-between; padding: 14px 0 8px; }
+  .head-row h1 { font-size: 28px; margin: 0; letter-spacing: -.025em; }
+
+  /* Accuracy banner */
+  .accuracy { display: flex; gap: 12px; align-items: flex-start; background: var(--surface); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow); margin: 4px 0 14px; }
+  .accuracy .big-dot { width: 14px; height: 14px; border-radius: 50%; flex: none; margin-top: 4px; }
+  .accuracy strong { display: block; font-size: 16px; }
+  .accuracy span { color: var(--muted); font-size: 14px; }
+
+  .tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 12px; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { border: 0; background: var(--surface-2); border-radius: 999px; padding: 8px 14px; font-size: 15px; font-weight: 500; white-space: nowrap; }
+  .tab[aria-pressed="true"] { background: var(--text); color: var(--bg); }
+
+  /* ---------- Program cards ---------- */
+  main { padding-bottom: calc(110px + env(safe-area-inset-bottom)); }
+  .group-title { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 18px 4px 8px; }
+  .card { width: 100%; text-align: left; display: block; border: 0; background: var(--surface); border-radius: var(--radius); padding: 16px; margin-bottom: 10px; box-shadow: var(--shadow); }
+  .card:active { transform: scale(.99); }
+  .card-top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .card-name { font-weight: 600; font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card-tier { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .card-balance { font-size: 26px; font-weight: 700; letter-spacing: -.02em; margin: 8px 0 10px; }
+  .card-balance small { font-size: 15px; font-weight: 500; color: var(--muted); margin-left: 4px; letter-spacing: 0; }
+  .card-balance.unknown { color: var(--muted); font-size: 20px; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; padding: 4px 10px; border-radius: 999px; }
+  .pill .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .fresh { color: var(--fresh); background: var(--fresh-bg); }
+  .aging { color: var(--aging); background: var(--aging-bg); }
+  .stale { color: var(--stale); background: var(--stale-bg); }
+  .never { color: var(--never); background: var(--never-bg); }
+  .meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .meta .sub { font-size: 13px; color: var(--muted); }
+  .conf-low { color: var(--stale); background: var(--stale-bg); }
+  .conf-medium { color: var(--aging); background: var(--aging-bg); }
+
+  .empty { text-align: center; padding: 48px 16px; color: var(--muted); }
+  .empty h2 { color: var(--text); font-size: 20px; margin: 0 0 6px; }
+
+  .history { margin-top: 28px; }
+  .history li { font-size: 14px; color: var(--muted); padding: 8px 0; border-top: 1px solid var(--line); list-style: none; }
+  .history ul { padding: 0; margin: 0; }
+  .history time { color: var(--text); font-weight: 500; margin-right: 6px; }
+
+  /* ---------- Bottom action bar ---------- */
+  .bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: linear-gradient(to top, var(--bg) 70%, transparent); }
+  .bar-inner { max-width: 560px; margin: 0 auto; display: flex; gap: 10px; }
+  .bar .btn-primary { flex: 1; box-shadow: 0 6px 20px color-mix(in srgb, var(--accent) 35%, transparent); }
+  .bar .btn-add { width: 56px; padding: 0; font-size: 26px; font-weight: 400; background: var(--surface); box-shadow: var(--shadow); }
+
+  /* ---------- Bottom sheets ---------- */
+  .scrim { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 10; opacity: 0; pointer-events: none; transition: opacity .2s; }
+  .scrim.open { opacity: 1; pointer-events: auto; }
+  .sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 11; background: var(--surface); border-radius: 22px 22px 0 0; max-height: 92dvh; overflow-y: auto; transform: translateY(105%); visibility: hidden; transition: transform .25s ease, visibility 0s .25s; padding: 8px 16px calc(20px + env(safe-area-inset-bottom)); max-width: 640px; margin: 0 auto; overscroll-behavior: contain; }
+  .sheet.open { transform: none; visibility: visible; transition: transform .25s ease; }
+  .grabber { width: 40px; height: 5px; border-radius: 3px; background: var(--line); margin: 4px auto 10px; }
+  .sheet-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .sheet-head h2 { margin: 0; font-size: 21px; letter-spacing: -.01em; }
+  .sheet label { display: block; font-size: 14px; font-weight: 600; color: var(--muted); margin: 14px 0 6px; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  textarea.field { min-height: 180px; resize: vertical; font-size: 15px; line-height: 1.45; }
+  .hint { font-size: 14px; color: var(--muted); margin: 6px 0 0; }
+  .actions { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
+
+  /* Review list */
+  .sheet label.change { border: 1.5px solid var(--line); border-radius: 16px; padding: 14px; margin: 0 0 10px; display: flex; gap: 12px; color: var(--text); font-size: 16px; font-weight: 400; }
+  .change.off { opacity: .45; }
+  .change input[type="checkbox"] { width: 22px; height: 22px; margin: 2px 0 0; accent-color: var(--accent); flex: none; }
+  .change-body { flex: 1; min-width: 0; }
+  .change-title { font-weight: 600; display: flex; justify-content: space-between; gap: 8px; }
+  .tag-new { font-size: 12px; font-weight: 700; color: var(--accent); }
+  .delta { font-size: 22px; font-weight: 700; margin: 6px 0; letter-spacing: -.01em; }
+  .delta .old { color: var(--muted); font-weight: 500; font-size: 16px; text-decoration: line-through; margin-right: 6px; }
+  .delta .diff { font-size: 14px; font-weight: 600; margin-left: 6px; }
+  .delta .diff.up { color: var(--fresh); }
+  .delta .diff.down { color: var(--stale); }
+  .quote { font-size: 13px; color: var(--muted); background: var(--surface-2); border-radius: 10px; padding: 8px 10px; margin-top: 8px; word-break: break-word; }
+  .reason { font-size: 14px; margin-top: 6px; }
+  .warn { background: var(--aging-bg); color: var(--aging); border-radius: 12px; padding: 10px 12px; font-size: 14px; margin-bottom: 10px; }
+
+  .spinner { width: 22px; height: 22px; border: 3px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; display: inline-block; vertical-align: middle; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .toast { position: fixed; left: 50%; bottom: calc(96px + env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(20px); background: var(--text); color: var(--bg); padding: 12px 18px; border-radius: 14px; font-size: 15px; font-weight: 500; opacity: 0; transition: all .2s; z-index: 20; max-width: calc(100% - 32px); text-align: center; pointer-events: none; }
+  .toast.show { opacity: 1; transform: translateX(-50%); }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+</style>
+</head>
+<body>
+
+<!-- ============ LOGIN ============ -->
+<section id="login" class="hidden">
+  <form class="login-card" id="loginForm">
+    <div class="logo"><svg width="32" height="32" viewBox="0 0 64 64"><path d="M14 44l18-26 18 26" stroke="white" stroke-width="7" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+    <h1>Points Wallet</h1>
+    <p>Enter your password to continue</p>
+    <input class="field" id="password" type="password" autocomplete="current-password" placeholder="Password" required>
+    <div class="error" id="loginError"></div>
+    <button class="btn btn-primary btn-block" id="loginBtn" type="submit">Unlock</button>
+  </form>
+</section>
+
+<!-- ============ APP ============ -->
+<section id="app" class="hidden">
+  <header>
+    <div class="wrap">
+      <div class="head-row">
+        <h1>Points</h1>
+        <button class="btn-quiet btn" id="logoutBtn">Lock</button>
+      </div>
+      <div class="accuracy" id="accuracy"></div>
+      <div class="tabs" role="toolbar" aria-label="Filter">
+        <button class="tab" data-filter="all" aria-pressed="true">All</button>
+        <button class="tab" data-filter="airline" aria-pressed="false">✈️ Airlines</button>
+        <button class="tab" data-filter="hotel" aria-pressed="false">🏨 Hotels</button>
+        <button class="tab" data-filter="card" aria-pressed="false">💳 Cards</button>
+        <button class="tab" data-filter="needs" aria-pressed="false">Needs update</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div id="list"></div>
+    <section class="history hidden" id="historyWrap">
+      <div class="group-title">Recent activity</div>
+      <ul id="history"></ul>
+    </section>
+  </main>
+
+  <div class="bar">
+    <div class="bar-inner">
+      <button class="btn btn-primary" id="openPaste">Paste an update</button>
+      <button class="btn btn-add" id="openAdd" aria-label="Add program manually">+</button>
+    </div>
+  </div>
+</section>
+
+<div class="scrim" id="scrim"></div>
+
+<!-- ============ PASTE SHEET ============ -->
+<div class="sheet" id="pasteSheet" role="dialog" aria-modal="true" aria-labelledby="pasteTitle">
+  <div class="grabber"></div>
+  <div class="sheet-head">
+    <h2 id="pasteTitle">Paste an update</h2>
+    <button class="btn btn-quiet" data-close>Cancel</button>
+  </div>
+
+  <div id="pasteStep">
+    <p class="hint" style="margin-top:0">Copy everything from your airline, hotel or card account page (or an email/statement) and paste it here. It's fine if it's messy.</p>
+    <textarea class="field" id="pasteText" placeholder="e.g. MileagePlus  Miles balance 84,213  Premier Gold…" style="margin-top:12px"></textarea>
+    <div class="actions">
+      <button class="btn btn-primary btn-block" id="readBtn">Read this text</button>
+      <button class="btn btn-block" id="clipBtn">Paste from clipboard</button>
+    </div>
+  </div>
+
+  <div id="reviewStep" class="hidden">
+    <p class="hint" style="margin-top:0">Here's what I found. Untick anything that looks wrong, then apply. Nothing is saved until you tap Apply.</p>
+    <div id="warnings" style="margin-top:12px"></div>
+    <div id="changes" style="margin-top:12px"></div>
+    <div class="actions">
+      <button class="btn btn-primary btn-block" id="applyBtn">Apply</button>
+      <button class="btn btn-block" id="backBtn">Back to text</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ EDIT SHEET ============ -->
+<div class="sheet" id="editSheet" role="dialog" aria-modal="true" aria-labelledby="editTitle">
+  <div class="grabber"></div>
+  <form id="editForm">
+    <div class="sheet-head">
+      <h2 id="editTitle">Edit</h2>
+      <button class="btn btn-quiet" type="button" data-close>Cancel</button>
+    </div>
+    <div id="editStatus"></div>
+
+    <label for="f_name">Program</label>
+    <input class="field" id="f_name" required placeholder="e.g. Delta SkyMiles">
+
+    <label for="f_balance">Balance</label>
+    <div class="row2">
+      <input class="field num" id="f_balance" inputmode="numeric" placeholder="0">
+      <select class="field" id="f_unit">
+        <option value="points">points</option>
+        <option value="miles">miles</option>
+        <option value="nights">nights</option>
+        <option value="dollars">dollars</option>
+      </select>
+    </div>
+
+    <label for="f_kind">Type</label>
+    <select class="field" id="f_kind">
+      <option value="airline">✈️ Airline</option>
+      <option value="hotel">🏨 Hotel</option>
+      <option value="card">💳 Credit card</option>
+      <option value="other">Other</option>
+    </select>
+
+    <div class="row2">
+      <div><label for="f_tier">Status / tier</label><input class="field" id="f_tier" placeholder="Gold"></div>
+      <div><label for="f_last4">Account last 4</label><input class="field num" id="f_last4" maxlength="4" placeholder="1234"></div>
+    </div>
+
+    <label for="f_expires">Expires</label>
+    <input class="field" id="f_expires" placeholder="e.g. Never, or 2027-03-01">
+
+    <label for="f_notes">Notes</label>
+    <textarea class="field" id="f_notes" style="min-height:80px" placeholder="Anything to remember"></textarea>
+
+    <div class="actions">
+      <button class="btn btn-primary btn-block" type="submit">Save</button>
+      <button class="btn btn-block" type="button" id="checkedBtn">✓ Balance is still correct</button>
+      <button class="btn btn-danger btn-block" type="button" id="deleteBtn">Delete program</button>
+    </div>
+  </form>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+// =====================================================================
+// Points Wallet — front end. Talks to /api/login, /api/data, /api/parse.
+// =====================================================================
+
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => document.querySelectorAll(s);
+
+let state = { programs: [], activity: [], updatedAt: null };
+let filter = "all";
+let editingId = null;
+let pending = []; // suggestions waiting for review
+
+// ---------- API ----------
+async function api(path, options = {}) {
+  const r = await fetch(path, {
+    ...options,
+    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    credentials: "same-origin",
+  });
+  const body = await r.json().catch(() => ({}));
+  if (r.status === 401 && path !== "/api/login") { showLogin(); throw new Error("Please log in again"); }
+  if (!r.ok) throw new Error(body.error || `Request failed (${r.status})`);
+  return body;
+}
+
+// ---------- Freshness (how accurate is each number?) ----------
+const DAY = 86400000;
+function freshness(p) {
+  const when = p.asOf && p.updatedAt ? Math.min(Date.parse(p.asOf), Date.parse(p.updatedAt)) : Date.parse(p.updatedAt || p.asOf || "");
+  if (!when || p.balance === null || p.balance === undefined) return { key: "never", label: "Never confirmed", days: Infinity };
+  const days = Math.floor((Date.now() - when) / DAY);
+  if (days <= 7) return { key: "fresh", label: "Up to date", days };
+  if (days <= 30) return { key: "aging", label: "Getting old", days };
+  return { key: "stale", label: "Out of date", days };
+}
+
+function ago(iso) {
+  if (!iso) return "never";
+  const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000);
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} hr ago`;
+  const d = Math.floor(s / 86400);
+  if (d === 1) return "yesterday";
+  if (d < 60) return `${d} days ago`;
+  return `${Math.floor(d / 30)} months ago`;
+}
+
+function shortDate(iso) {
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+const fmt = (n) => (n === null || n === undefined ? "—" : Number(n).toLocaleString());
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const sourceLabel = { paste: "from paste", manual: "typed in", checked: "checked by you" };
+const KIND_LABEL = { airline: "Airlines", hotel: "Hotels", card: "Credit cards", other: "Other" };
+
+// ---------- Render ----------
+function render() {
+  renderAccuracy();
+  const list = $("#list");
+  let items = state.programs.slice();
+  if (filter === "needs") items = items.filter((p) => freshness(p).key !== "fresh");
+  else if (filter !== "all") items = items.filter((p) => p.kind === filter);
+
+  if (!state.programs.length) {
+    list.innerHTML = `<div class="empty"><h2>No programs yet</h2><p>Tap <b>Paste an update</b> and paste text from any airline, hotel or credit card account page. I'll pick out the balances for you.</p></div>`;
+  } else if (!items.length) {
+    list.innerHTML = `<div class="empty"><p>${filter === "needs" ? "🎉 Everything is up to date." : "Nothing here yet."}</p></div>`;
+  } else {
+    const order = ["airline", "hotel", "card", "other"];
+    list.innerHTML = order.map((kind) => {
+      const group = items.filter((p) => p.kind === kind).sort((a, b) => (b.balance || 0) - (a.balance || 0));
+      if (!group.length) return "";
+      return `<div class="group-title">${KIND_LABEL[kind]}</div>` + group.map(cardHtml).join("");
+    }).join("");
+  }
+
+  const hist = state.activity || [];
+  $("#historyWrap").classList.toggle("hidden", !hist.length);
+  $("#history").innerHTML = hist.slice(0, 10).map((a) => `<li><time>${esc(ago(a.at))}</time>${esc(a.note)}</li>`).join("");
+}
+
+function cardHtml(p) {
+  const f = freshness(p);
+  const conf = p.source === "paste" && p.confidence && p.confidence !== "high"
+    ? `<span class="pill conf-${p.confidence}">${p.confidence === "low" ? "Double-check" : "Probably right"}</span>` : "";
+  const when = p.updatedAt ? `${ago(p.updatedAt)} · ${sourceLabel[p.source] || "updated"}` : "";
+  const tierBits = [p.tier, p.memberLast4 ? `•••${p.memberLast4}` : null].filter(Boolean).join(" · ");
+  return `
+    <button class="card" data-id="${esc(p.id)}">
+      <div class="card-top">
+        <div style="min-width:0">
+          <div class="card-name">${esc(p.name)}</div>
+          ${tierBits ? `<div class="card-tier">${esc(tierBits)}</div>` : ""}
+        </div>
+      </div>
+      <div class="card-balance num ${p.balance === null ? "unknown" : ""}">${p.balance === null ? "No balance yet" : fmt(p.balance)}${p.balance === null ? "" : `<small>${esc(p.unit)}</small>`}</div>
+      <div class="meta">
+        <span class="pill ${f.key}"><span class="dot"></span>${f.label}</span>
+        ${conf}
+        <span class="sub">${esc(when)}</span>
+      </div>
+    </button>`;
+}
+
+function renderAccuracy() {
+  const el = $("#accuracy");
+  const ps = state.programs;
+  if (!ps.length) {
+    el.innerHTML = `<div class="big-dot" style="background:var(--never)"></div><div><strong>Nothing tracked yet</strong><span>Paste an account page to get started</span></div>`;
+    return;
+  }
+  const counts = { fresh: 0, aging: 0, stale: 0, never: 0 };
+  ps.forEach((p) => counts[freshness(p).key]++);
+  const needs = ps.length - counts.fresh;
+  const oldest = ps.map((p) => ({ p, f: freshness(p) })).sort((a, b) => b.f.days - a.f.days)[0];
+  const color = counts.stale || counts.never ? "var(--stale)" : counts.aging ? "var(--aging)" : "var(--fresh)";
+  const headline = needs === 0 ? `All ${ps.length} balances are up to date` : `${counts.fresh} of ${ps.length} up to date`;
+  let detail = `Last change ${ago(state.updatedAt)}`;
+  if (needs) {
+    detail = oldest.f.days === Infinity
+      ? `${esc(oldest.p.name)} has never been confirmed`
+      : `Oldest: ${esc(oldest.p.name)}, ${oldest.f.days} days old`;
+  }
+  el.innerHTML = `<div class="big-dot" style="background:${color}"></div><div style="min-width:0"><strong>${headline}</strong><span>${detail}</span>
+    <div class="legend">
+      <span class="pill fresh"><span class="dot"></span>≤ 7 days</span>
+      <span class="pill aging"><span class="dot"></span>8–30 days</span>
+      <span class="pill stale"><span class="dot"></span>30+ days</span>
+    </div></div>`;
+}
+
+// ---------- Saving ----------
+async function save(programs, note) {
+  state = await api("/api/data", { method: "PUT", body: JSON.stringify({ programs, activityNote: note }) });
+  render();
+}
+
+function toast(msg) {
+  const t = $("#toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toast.t);
+  toast.t = setTimeout(() => t.classList.remove("show"), 2600);
+}
+
+// ---------- Sheets ----------
+function openSheet(id) {
+  $("#scrim").classList.add("open");
+  $(id).scrollTop = 0;
+  $(id).classList.add("open");
+}
+function closeSheets() {
+  $("#scrim").classList.remove("open");
+  $$(".sheet").forEach((s) => s.classList.remove("open"));
+}
+$("#scrim").addEventListener("click", closeSheets);
+$$("[data-close]").forEach((b) => b.addEventListener("click", closeSheets));
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSheets(); });
+
+// ---------- Paste flow ----------
+$("#openPaste").addEventListener("click", () => {
+  $("#pasteStep").classList.remove("hidden");
+  $("#reviewStep").classList.add("hidden");
+  openSheet("#pasteSheet");
+  setTimeout(() => $("#pasteText").focus(), 250);
+});
+
+$("#clipBtn").addEventListener("click", async () => {
+  try {
+    const t = await navigator.clipboard.readText();
+    if (t) $("#pasteText").value = t;
+    else toast("Clipboard is empty");
+  } catch { toast("Tap and hold in the box, then choose Paste"); }
+});
+
+$("#readBtn").addEventListener("click", async () => {
+  const text = $("#pasteText").value.trim();
+  if (!text) return toast("Paste some text first");
+  const btn = $("#readBtn");
+  btn.disabled = true;
+  btn.innerHTML = `<span class="spinner"></span>&nbsp; Reading… (about 10–30 sec)`;
+  try {
+    const result = await api("/api/parse", { method: "POST", body: JSON.stringify({ text }) });
+    pending = result.changes.map((c) => ({ ...c, on: c.balance !== null || c.action === "add" }));
+    showReview(result.warnings || []);
+  } catch (e) {
+    toast(e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Read this text";
+  }
+});
+
+function showReview(warnings) {
+  $("#pasteStep").classList.add("hidden");
+  $("#reviewStep").classList.remove("hidden");
+  $("#warnings").innerHTML = warnings.map((w) => `<div class="warn">⚠️ ${esc(w)}</div>`).join("");
+  if (!pending.length) {
+    $("#changes").innerHTML = `<div class="empty" style="padding:24px 0"><p>I couldn't find any balances in that text. Try copying more of the page.</p></div>`;
+  } else {
+    $("#changes").innerHTML = pending.map((c, i) => {
+      const old = c.programId ? state.programs.find((p) => p.id === c.programId) : null;
+      const diff = old && old.balance !== null && c.balance !== null ? c.balance - old.balance : null;
+      const diffHtml = diff === null ? "" : diff === 0
+        ? `<span class="diff">no change</span>`
+        : `<span class="diff ${diff > 0 ? "up" : "down"}">${diff > 0 ? "+" : ""}${fmt(diff)}</span>`;
+      const confLabel = { high: "Confident", medium: "Probably right", low: "Double-check" }[c.confidence];
+      const confClass = { high: "fresh", medium: "conf-medium", low: "conf-low" }[c.confidence];
+      return `
+        <label class="change ${c.on ? "" : "off"}" data-i="${i}">
+          <input type="checkbox" ${c.on ? "checked" : ""} data-i="${i}">
+          <div class="change-body">
+            <div class="change-title"><span>${esc(old ? old.name : c.name)}</span>${old ? "" : `<span class="tag-new">NEW</span>`}</div>
+            <div class="delta num">
+              ${old && old.balance !== null && diff !== 0 ? `<span class="old">${fmt(old.balance)}</span>` : ""}
+              ${c.balance === null ? "<span style='font-size:16px;color:var(--muted)'>No balance found</span>" : `${fmt(c.balance)} <small style="font-size:14px;font-weight:500;color:var(--muted)">${esc(c.unit)}</small>`}
+              ${diffHtml}
+            </div>
+            <span class="pill ${confClass}">${confLabel}</span>
+            ${c.tier ? `<span class="pill never">${esc(c.tier)}</span>` : ""}
+            ${c.asOf ? `<span class="pill never">as of ${esc(c.asOf)}</span>` : ""}
+            <div class="reason">${esc(c.reason)}</div>
+            ${c.evidence ? `<div class="quote">“${esc(c.evidence)}”</div>` : ""}
+          </div>
+        </label>`;
+    }).join("");
+  }
+  updateApplyBtn();
+}
+
+$("#changes").addEventListener("change", (e) => {
+  if (e.target.type !== "checkbox") return;
+  const i = Number(e.target.dataset.i);
+  pending[i].on = e.target.checked;
+  e.target.closest(".change").classList.toggle("off", !e.target.checked);
+  updateApplyBtn();
+});
+
+function updateApplyBtn() {
+  const n = pending.filter((c) => c.on).length;
+  $("#applyBtn").disabled = n === 0;
+  $("#applyBtn").textContent = n ? `Apply ${n} change${n > 1 ? "s" : ""}` : "Nothing selected";
+}
+
+$("#backBtn").addEventListener("click", () => {
+  $("#reviewStep").classList.add("hidden");
+  $("#pasteStep").classList.remove("hidden");
+});
+
+$("#applyBtn").addEventListener("click", async () => {
+  const chosen = pending.filter((c) => c.on);
+  const now = new Date().toISOString();
+  const programs = state.programs.map((p) => ({ ...p }));
+  const names = [];
+  for (const c of chosen) {
+    const fields = {
+      balance: c.balance,
+      unit: c.unit || "points",
+      updatedAt: now,
+      asOf: c.asOf || now,
+      source: "paste",
+      evidence: c.evidence,
+      confidence: c.confidence,
+    };
+    const existing = c.programId && programs.find((p) => p.id === c.programId);
+    if (existing) {
+      if (c.balance === null) delete fields.balance;
+      Object.assign(existing, fields);
+      if (c.tier) existing.tier = c.tier;
+      if (c.expires) existing.expires = c.expires;
+      if (c.memberLast4) existing.memberLast4 = c.memberLast4;
+      names.push(existing.name);
+    } else {
+      programs.push({ id: "", name: c.name, kind: c.kind, tier: c.tier, expires: c.expires, memberLast4: c.memberLast4, ...fields });
+      names.push(c.name);
+    }
+  }
+  const btn = $("#applyBtn");
+  btn.disabled = true;
+  try {
+    await save(programs, `Updated from paste: ${names.join(", ")}`);
+    $("#pasteText").value = "";
+    closeSheets();
+    toast(`Saved ${chosen.length} update${chosen.length > 1 ? "s" : ""} ✓`);
+  } catch (e) {
+    toast(e.message);
+    btn.disabled = false;
+  }
+});
+
+// ---------- Manual add / edit ----------
+$("#openAdd").addEventListener("click", () => openEdit(null));
+$("#list").addEventListener("click", (e) => {
+  const card = e.target.closest(".card");
+  if (card) openEdit(card.dataset.id);
+});
+
+function openEdit(id) {
+  editingId = id;
+  const p = state.programs.find((x) => x.id === id) || { kind: filter in KIND_LABEL ? filter : "airline", unit: "points" };
+  $("#editTitle").textContent = id ? "Edit program" : "Add program";
+  $("#f_name").value = p.name || "";
+  $("#f_balance").value = p.balance ?? "";
+  $("#f_unit").value = ["points", "miles", "nights", "dollars"].includes(p.unit) ? p.unit : "points";
+  $("#f_kind").value = p.kind || "other";
+  $("#f_tier").value = p.tier || "";
+  $("#f_last4").value = p.memberLast4 || "";
+  $("#f_expires").value = p.expires || "";
+  $("#f_notes").value = p.notes || "";
+  $("#deleteBtn").classList.toggle("hidden", !id);
+  $("#checkedBtn").classList.toggle("hidden", !id || p.balance === null);
+
+  if (id) {
+    const f = freshness(p);
+    const bits = [`<span class="pill ${f.key}"><span class="dot"></span>${f.label}</span>`];
+    let line = p.updatedAt ? `Last updated ${shortDate(p.updatedAt)} (${ago(p.updatedAt)}), ${sourceLabel[p.source] || ""}.` : "Never updated.";
+    if (p.asOf && p.updatedAt && shortDate(p.asOf) !== shortDate(p.updatedAt)) line += ` The text said it was correct as of ${shortDate(p.asOf)}.`;
+    $("#editStatus").innerHTML = `<div style="margin-bottom:4px">${bits.join(" ")}</div><p class="hint">${esc(line)}</p>` +
+      (p.evidence ? `<div class="quote">Source: “${esc(p.evidence)}”</div>` : "");
+  } else {
+    $("#editStatus").innerHTML = "";
+  }
+  openSheet("#editSheet");
+}
+
+$("#editForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const now = new Date().toISOString();
+  const programs = state.programs.map((p) => ({ ...p }));
+  const old = programs.find((p) => p.id === editingId);
+  const raw = $("#f_balance").value.replace(/[,\s]/g, "");
+  const balance = raw === "" ? null : Number(raw);
+  if (raw !== "" && !Number.isFinite(balance)) return toast("Balance should be a number");
+
+  const fields = {
+    name: $("#f_name").value.trim(),
+    kind: $("#f_kind").value,
+    unit: $("#f_unit").value,
+    tier: $("#f_tier").value.trim() || null,
+    memberLast4: $("#f_last4").value.trim() || null,
+    expires: $("#f_expires").value.trim() || null,
+    notes: $("#f_notes").value.trim() || null,
+    balance,
+  };
+  let note;
+  if (old) {
+    const balanceChanged = old.balance !== balance;
+    Object.assign(old, fields);
+    if (balanceChanged) Object.assign(old, { updatedAt: now, asOf: now, source: "manual", evidence: null, confidence: null });
+    note = balanceChanged ? `Edited ${fields.name}: balance set to ${fmt(balance)}` : `Edited details for ${fields.name}`;
+  } else {
+    programs.push({ id: "", ...fields, updatedAt: balance === null ? null : now, asOf: balance === null ? null : now, source: "manual" });
+    note = `Added ${fields.name}`;
+  }
+  try {
+    await save(programs, note);
+    closeSheets();
+    toast("Saved ✓");
+  } catch (err) { toast(err.message); }
+});
+
+$("#checkedBtn").addEventListener("click", async () => {
+  const now = new Date().toISOString();
+  const programs = state.programs.map((p) => p.id === editingId ? { ...p, updatedAt: now, asOf: now, source: "checked", confidence: "high" } : p);
+  const p = programs.find((x) => x.id === editingId);
+  try {
+    await save(programs, `Confirmed ${p.name} is still ${fmt(p.balance)}`);
+    closeSheets();
+    toast("Marked as up to date ✓");
+  } catch (err) { toast(err.message); }
+});
+
+$("#deleteBtn").addEventListener("click", async () => {
+  const p = state.programs.find((x) => x.id === editingId);
+  if (!confirm(`Delete ${p.name}? This can't be undone.`)) return;
+  try {
+    await save(state.programs.filter((x) => x.id !== editingId), `Deleted ${p.name}`);
+    closeSheets();
+    toast("Deleted");
+  } catch (err) { toast(err.message); }
+});
+
+// ---------- Filters ----------
+$$(".tab").forEach((t) => t.addEventListener("click", () => {
+  filter = t.dataset.filter;
+  $$(".tab").forEach((x) => x.setAttribute("aria-pressed", String(x === t)));
+  render();
+}));
+
+// ---------- Login / logout ----------
+function showLogin() {
+  $("#app").classList.add("hidden");
+  $("#login").classList.remove("hidden");
+  closeSheets();
+  setTimeout(() => $("#password").focus(), 50);
+}
+async function showApp() {
+  $("#login").classList.add("hidden");
+  $("#app").classList.remove("hidden");
+  try {
+    state = await api("/api/data");
+    render();
+  } catch (e) { toast(e.message); }
+}
+
+$("#loginForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("#loginError").textContent = "";
+  $("#loginBtn").disabled = true;
+  try {
+    await api("/api/login", { method: "POST", body: JSON.stringify({ password: $("#password").value }) });
+    $("#password").value = "";
+    showApp();
+  } catch (err) {
+    $("#loginError").textContent = err.message;
+  } finally { $("#loginBtn").disabled = false; }
+});
+
+$("#logoutBtn").addEventListener("click", async () => {
+  await api("/api/login", { method: "DELETE" }).catch(() => {});
+  state = { programs: [], activity: [] };
+  showLogin();
+});
+
+// Refresh the "x days ago" labels when you come back to the app.
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && !$("#app").classList.contains("hidden")) showApp();
+});
+
+// Start
+api("/api/login").then((r) => (r.loggedIn ? showApp() : showLogin())).catch(showLogin);
+</script>
+</body>
+</html>
