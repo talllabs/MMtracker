@@ -1,0 +1,14 @@
+{
+  "name": "points-app",
+  "private": true,
+  "type": "module",
+  "description": "Password-protected tracker for airline, hotel and credit card points.",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.9.0",
+    "zod": "^4.6.7"
+  }
+}
