@@ -34,7 +34,10 @@ This folder is completely separate from the rest of the MMtracker repo.
 | Name | Value |
 |---|---|
 | `APP_PASSWORD` | The password you want to use to unlock the app |
-| `ANTHROPIC_API_KEY` | Your Claude API key from console.anthropic.com (this powers the "read my pasted text" feature) |
+| `OPENAI_API_KEY` | Your OpenAI API key. This powers the "read my pasted text" feature. |
+| `OPENAI_MODEL` *(optional)* | Which OpenAI model to use. Defaults to `gpt-4o-mini`, the same as WebWatch. |
+
+You can use `ANTHROPIC_API_KEY` (Claude) instead of OpenAI. If both keys are set, Claude is used.
 
 To change your password later, edit `APP_PASSWORD` and redeploy. Every device gets logged out when you do.
 
@@ -47,7 +50,7 @@ To change your password later, edit `APP_PASSWORD` and redeploy. Every device ge
 
 ## Privacy notes
 - The app only stores the **last 4** characters of account numbers.
-- Pasted text is sent to the Claude API to be read, and is not stored. Only the balances you approve are saved.
+- Pasted text is sent to the AI (OpenAI or Claude, whichever key you set) to be read, and is not stored. Only the balances you approve are saved.
 - Please don't paste passwords or full card numbers.
 
 ## Ideas for later (auto-updating)

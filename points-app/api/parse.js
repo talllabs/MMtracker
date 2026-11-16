@@ -48,46 +48,32 @@ export default async function handler(req, res) {
     const { text } = readJson(req);
     if (!text || !String(text).trim()) return res.status(400).json({ error: "Paste some text first." });
     if (String(text).length > 100_000) return res.status(400).json({ error: "That's a lot of text — try pasting one page at a time." });
-    if (!process.env.ANTHROPIC_API_KEY) {
-      return res.status(500).json({ error: "ANTHROPIC_API_KEY is not set in Vercel environment variables." });
+    if (!process.env.ANTHROPIC_API_KEY && !process.env.OPENAI_API_KEY) {
+      return res.status(500).json({ error: "No AI key found. Add OPENAI_API_KEY (or ANTHROPIC_API_KEY) in Vercel environment variables." });
     }
 
     const data = await loadData();
     const existing = data.programs.map((p) => ({
       id: p.id, name: p.name, kind: p.kind, balance: p.balance, unit: p.unit, tier: p.tier,
     }));
+    const userContent =
+      `Today is ${new Date().toISOString().slice(0, 10)}.\n\n` +
+      `My existing programs:\n${JSON.stringify(existing, null, 2)}\n\n` +
+      `Pasted text:\n<pasted>\n${text}\n</pasted>`;
 
-    const client = new Anthropic();
-    const response = await client.messages.parse({
-      model: "claude-opus-5-5",
-      max_tokens: 16000,
-      system: SYSTEM,
-      messages: [
-        {
-          role: "user",
-          content:
-            `Today is ${new Date().toISOString().slice(0, 10)}.\n\n` +
-            `My existing programs:\n${JSON.stringify(existing, null, 2)}\n\n` +
-            `Pasted text:\n<pasted>\n${text}\n</pasted>`,
-        },
-      ],
-      output_config: { format: zodOutputFormat(Result) },
-    });
-
-    if (response.stop_reason === "refusal") {
-      return res.status(422).json({ error: "The AI couldn't read that text. Try pasting a smaller part." });
-    }
-    if (!response.parsed_output) {
-      return res.status(502).json({ error: "The AI reply was incomplete. Please try again." });
-    }
+    // Uses Claude if ANTHROPIC_API_KEY is set, otherwise OpenAI.
+    const result = process.env.ANTHROPIC_API_KEY
+      ? await readWithClaude(userContent)
+      : await readWithOpenAI(userContent);
+    if (result.error) return res.status(result.status).json({ error: result.error });
 
     // Make sure "update" only points at programs that really exist.
     const ids = new Set(data.programs.map((p) => p.id));
-    const changes = response.parsed_output.changes.map((c) =>
+    const changes = result.output.changes.map((c) =>
       c.action === "update" && !ids.has(c.programId) ? { ...c, action: "add", programId: null } : c,
     );
 
-    res.status(200).json({ changes, warnings: response.parsed_output.warnings });
+    res.status(200).json({ changes, warnings: result.output.warnings });
   } catch (err) {
     if (err instanceof Anthropic.RateLimitError) {
       return res.status(429).json({ error: "Too many requests to the AI right now. Wait a minute and try again." });
@@ -97,4 +83,63 @@ export default async function handler(req, res) {
     }
     sendError(res, err);
   }
+}
+
+// ---------- Claude (used when ANTHROPIC_API_KEY is set) ----------
+async function readWithClaude(userContent) {
+  const client = new Anthropic();
+  const response = await client.messages.parse({
+    model: "claude-opus-5-5",
+    max_tokens: 16000,
+    system: SYSTEM,
+    messages: [{ role: "user", content: userContent }],
+    output_config: { format: zodOutputFormat(Result) },
+  });
+  if (response.stop_reason === "refusal") {
+    return { status: 422, error: "The AI couldn't read that text. Try pasting a smaller part." };
+  }
+  if (!response.parsed_output) {
+    return { status: 502, error: "The AI reply was incomplete. Please try again." };
+  }
+  return { output: response.parsed_output };
+}
+
+// ---------- OpenAI (used when only OPENAI_API_KEY is set) ----------
+// Same approach as webwatch_monitor.py: a direct call, with the model set by
+// OPENAI_MODEL (defaults to gpt-4o-mini).
+async function readWithOpenAI(userContent) {
+  const { $schema, ...schema } = z.toJSONSchema(Result);
+  const r = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+      messages: [
+        { role: "system", content: SYSTEM },
+        { role: "user", content: userContent },
+      ],
+      response_format: {
+        type: "json_schema",
+        json_schema: { name: "points_updates", strict: true, schema },
+      },
+    }),
+  });
+  const body = await r.json().catch(() => ({}));
+  if (r.status === 401) return { status: 500, error: "The OPENAI_API_KEY in Vercel isn't valid." };
+  if (r.status === 429) return { status: 429, error: "Too many requests to the AI right now (or your OpenAI account is out of credit). Try again in a minute." };
+  if (!r.ok) return { status: 502, error: `OpenAI error: ${body.error?.message || r.status}` };
+
+  const message = body.choices?.[0]?.message;
+  if (message?.refusal) return { status: 422, error: "The AI couldn't read that text. Try pasting a smaller part." };
+  let parsed;
+  try {
+    parsed = Result.safeParse(JSON.parse(message?.content || ""));
+  } catch {
+    parsed = { success: false };
+  }
+  if (!parsed.success) return { status: 502, error: "The AI reply was incomplete. Please try again." };
+  return { output: parsed.data };
 }
