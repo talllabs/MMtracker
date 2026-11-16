@@ -11,6 +11,7 @@ export const config = { maxDuration: 60 };
 const Change = z.object({
   action: z.enum(["update", "add"]),
   programId: z.string().nullable().describe("id of the existing program for 'update', null for 'add'"),
+  owner: z.string().nullable().describe("Whose account this is, if the text says (a person's first name), else null"),
   name: z.string().describe("Program name, e.g. 'United MileagePlus', 'Marriott Bonvoy', 'Chase Ultimate Rewards'"),
   kind: z.enum(["airline", "hotel", "card", "other"]),
   balance: z.number().nullable().describe("Points/miles balance as a plain number, null if not stated"),
@@ -18,6 +19,7 @@ const Change = z.object({
   tier: z.string().nullable().describe("Elite status / tier if stated"),
   expires: z.string().nullable().describe("Expiration date or rule if stated, as written"),
   memberLast4: z.string().nullable().describe("Last 4 characters of the member/account number if visible. Never more than 4."),
+  notes: z.string().nullable().describe("Short useful note from the text about this account (e.g. expected bonus, plan to cancel), else null"),
   asOf: z.string().nullable().describe("Date the balance was true if the text states one (YYYY-MM-DD), else null"),
   evidence: z.string().describe("Short exact quote from the pasted text that shows this number"),
   confidence: z.enum(["high", "medium", "low"]),
@@ -33,6 +35,7 @@ const SYSTEM = `You read raw text a person copied from airline, hotel and credit
 
 Rules:
 - Only report numbers that are actually in the text. Never guess or estimate a balance.
+- The text may list accounts for several people. The same program for two different people is two separate accounts: match on BOTH the program and the owner, and never merge different owners.
 - Match to an existing program when it is clearly the same account (e.g. "MileagePlus" = "United MileagePlus", "Amex MR" = "American Express Membership Rewards"). Use action "update" with its programId. Otherwise use "add".
 - If the balance shown equals the existing balance, still include it (it confirms the number is current).
 - Pending, projected, or "points earned this trip" numbers are NOT the balance. Skip them or mention them in warnings.
@@ -54,7 +57,7 @@ export default async function handler(req, res) {
 
     const data = await loadData();
     const existing = data.programs.map((p) => ({
-      id: p.id, name: p.name, kind: p.kind, balance: p.balance, unit: p.unit, tier: p.tier,
+      id: p.id, owner: p.owner, name: p.name, kind: p.kind, balance: p.balance, unit: p.unit, tier: p.tier,
     }));
     const userContent =
       `Today is ${new Date().toISOString().slice(0, 10)}.\n\n` +
