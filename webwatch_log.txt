@@ -1294,3 +1294,15 @@
 [2026-11-15 19:17:26] ============================================================
 [2026-11-15 19:17:26] monitor complete. 0 change(s) detected.
 [2026-11-15 19:17:26] ============================================================
+[2026-11-16 22:47:21] ============================================================
+[2026-11-16 22:47:21] WebWatch Monitor Starting
+[2026-11-16 22:47:21] ============================================================
+[2026-11-16 22:47:21] BASE44_WEBHOOK_URL not set - skipping webhook, results will go to /home/runner/work/MMtracker/MMtracker/webwatch_results.csv
+[2026-11-16 22:47:21] previous snapshots: 0 sites cached
+[2026-11-16 22:47:21] loaded 1 sites from watchlist
+[2026-11-16 22:47:21] checking Example Tourism Board RFPs...
+[2026-11-16 22:47:21] warning: https://example.com/rfps returned status 404
+[2026-11-16 22:47:21] skipping Example Tourism Board RFPs (unreachable)
+[2026-11-16 22:47:21] ============================================================
+[2026-11-16 22:47:21] monitor complete. 0 change(s) detected.
+[2026-11-16 22:47:21] ============================================================
