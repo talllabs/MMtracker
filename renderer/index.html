@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>LinkedIn Sheets Sync</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>LinkedIn → Google Sheets Daily Sync</h1>
+    <p class="subtitle">Checks a LinkedIn search once a day and adds new posts to your Google Sheet.</p>
+  </header>
+
+  <main>
+    <section class="card" id="step-1">
+      <h2>1. LinkedIn search</h2>
+      <p>Paste the LinkedIn content-search link you want checked every day.</p>
+      <input type="text" id="searchUrl" placeholder="https://www.linkedin.com/search/results/content/?...">
+      <button id="saveSearchUrl">Save search link</button>
+    </section>
+
+    <section class="card" id="step-2">
+      <h2>2. LinkedIn login</h2>
+      <p>Opens a visible browser window where you log in yourself. Your password is never seen or stored by this app — only your logged-in session is saved.</p>
+      <div class="status-row">
+        <span class="dot" id="linkedin-dot"></span>
+        <span id="linkedin-status">Not connected</span>
+      </div>
+      <button id="linkedinLogin">Log in to LinkedIn</button>
+      <button id="linkedinReconnect" class="secondary">Reconnect LinkedIn</button>
+    </section>
+
+    <section class="card" id="step-3">
+      <h2>3. Google Sheet</h2>
+      <p>Sign in with Google, then paste the link to the sheet you want new posts added to.</p>
+      <div class="status-row">
+        <span class="dot" id="google-dot"></span>
+        <span id="google-status">Not connected</span>
+      </div>
+      <button id="googleConnect">Sign in with Google</button>
+      <input type="text" id="sheetUrl" placeholder="https://docs.google.com/spreadsheets/d/...">
+      <button id="saveSheetUrl">Save Google Sheet</button>
+    </section>
+
+    <section class="card" id="step-4">
+      <h2>4. Run it</h2>
+      <button id="runNow" class="primary">Run Now</button>
+      <button id="installDaily">Install Daily Check (8:00 AM)</button>
+      <button id="uninstallDaily" class="secondary">Turn off Daily Check</button>
+      <p id="daily-status" class="muted"></p>
+    </section>
+
+    <section class="card" id="step-5">
+      <h2>Status</h2>
+      <ul class="stats">
+        <li>Last run: <span id="lastRunAt">never</span></li>
+        <li>Posts checked: <span id="lastRunChecked">–</span></li>
+        <li>New posts added: <span id="lastRunAdded">–</span></li>
+        <li>Login/errors: <span id="lastRunError">none</span></li>
+      </ul>
+      <pre id="liveStatus" class="live-status"></pre>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

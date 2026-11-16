@@ -1,0 +1,754 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>WebWatch RFP Monitor Dashboard</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f5f6f8;
+    --panel: #ffffff;
+    --border: #e2e4e9;
+    --text: #1a1d23;
+    --muted: #6b7280;
+    --accent: #2563eb;
+    --good: #16a34a;
+    --bad: #dc2626;
+    --warn: #d97706;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1115;
+      --panel: #171a21;
+      --border: #2a2e37;
+      --text: #e6e8eb;
+      --muted: #9aa1ac;
+      --accent: #5b8def;
+      --good: #4ade80;
+      --bad: #f87171;
+      --warn: #fbbf24;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    padding: 24px;
+  }
+  .wrap { max-width: 1000px; margin: 0 auto; }
+  header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  h1 { font-size: 1.4rem; margin: 0; }
+  .sub { color: var(--muted); font-size: 0.9rem; margin-top: 4px; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  button, .btn {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  button:hover, .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .btn.primary:hover { opacity: 0.9; color: #fff; }
+
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .stat {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .stat .label { color: var(--muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; }
+  .stat .value { font-size: 1.6rem; font-weight: 600; margin-top: 4px; }
+  .stat.changes .value { color: var(--warn); }
+  .stat.ok .value { color: var(--good); }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 20px;
+    overflow: hidden;
+  }
+  .panel-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .panel-header h2 { font-size: 1rem; margin: 0; }
+  .panel-body { padding: 0; }
+
+  table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 0.85rem; }
+  th, td { text-align: left; padding: 10px 16px; border-bottom: 1px solid var(--border); overflow-wrap: break-word; word-break: break-word; }
+  th { color: var(--muted); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em; }
+  tr:last-child td { border-bottom: none; }
+  td.mono, .mono { font-family: var(--mono); font-size: 0.78rem; color: var(--muted); }
+  a.site-link { color: var(--accent); text-decoration: none; overflow-wrap: break-word; word-break: break-word; }
+  a.site-link:hover { text-decoration: underline; }
+  .panel-body { overflow-x: auto; }
+
+  pre.log {
+    margin: 0;
+    padding: 16px;
+    max-height: 420px;
+    overflow: auto;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .log-line.change { color: var(--warn); }
+  .log-line.error { color: var(--bad); }
+  .log-line.ok { color: var(--good); }
+
+  .empty { padding: 24px 16px; color: var(--muted); font-size: 0.85rem; text-align: center; }
+  .badge {
+    display: inline-block;
+    font-size: 0.7rem;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--border);
+    color: var(--muted);
+  }
+  footer { color: var(--muted); font-size: 0.78rem; text-align: center; margin-top: 24px; }
+  footer a { color: var(--accent); }
+
+  input[type="text"], input[type="password"] {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 7px 10px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    width: 220px;
+  }
+
+  #gate {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .gate-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px;
+    width: 320px;
+    text-align: center;
+  }
+  .gate-card h1 { font-size: 1.15rem; margin: 0 0 4px; }
+  .gate-card p { color: var(--muted); font-size: 0.85rem; margin: 0 0 16px; }
+  .gate-card input { width: 100%; margin-bottom: 10px; text-align: center; }
+  .gate-card button { width: 100%; justify-content: center; }
+  .gate-error { color: var(--bad); font-size: 0.8rem; min-height: 1.2em; margin-top: 8px; }
+
+  .add-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .add-form input[type="text"] { flex: 1; min-width: 160px; }
+  .import-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 16px;
+  }
+  .status-msg { font-size: 0.8rem; padding: 0 16px 12px; color: var(--muted); }
+  .status-msg.ok { color: var(--good); }
+  .status-msg.error { color: var(--bad); }
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <div class="gate-card">
+    <h1>WebWatch RFP Monitor</h1>
+    <p>Enter the dashboard password to continue.</p>
+    <input id="gatePassword" type="password" placeholder="Password" autofocus />
+    <button id="gateSubmit" class="btn primary" style="width:100%;justify-content:center;">Unlock</button>
+    <div class="gate-error" id="gateError"></div>
+  </div>
+</div>
+
+<div class="wrap" id="dashboard" style="display:none;">
+  <header>
+    <div>
+      <h1>WebWatch RFP Monitor</h1>
+      <div class="sub">Daily site-change monitor for tourism/procurement watchlist</div>
+    </div>
+    <div class="controls">
+      <input id="repoInput" type="text" placeholder="owner/repo" value="talllabs/MMtracker" />
+      <input id="branchInput" type="text" placeholder="branch" value="main" style="width:100px" />
+      <button id="refreshBtn">Refresh</button>
+      <button id="runCheckBtn" class="btn primary">Run Check Now</button>
+    </div>
+  </header>
+
+  <div class="status-msg" id="runCheckStatus" style="margin-bottom:12px;"></div>
+
+  <div class="stats">
+    <div class="stat"><div class="label">Sites Watched</div><div class="value" id="statSites">–</div></div>
+    <div class="stat"><div class="label">Last Run Coverage</div><div class="value" id="statCoverage" style="font-size:1rem;">–</div></div>
+    <div class="stat changes"><div class="label">Changes Logged</div><div class="value" id="statChanges">–</div></div>
+    <div class="stat"><div class="label">Last Run</div><div class="value" id="statLastRun" style="font-size:1rem;">–</div></div>
+    <div class="stat ok"><div class="label">Status</div><div class="value" id="statStatus" style="font-size:1rem;">–</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <h2>Detected Changes</h2>
+      <a id="downloadCsv" class="btn primary" href="#" download="webwatch_results.csv">Download CSV</a>
+    </div>
+    <div class="panel-body" id="changesBody">
+      <div class="empty">Loading…</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <h2>Run Log</h2>
+      <span class="badge" id="logMeta">–</span>
+    </div>
+    <pre class="log" id="logBody">Loading…</pre>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <h2>URLs to Watch</h2>
+      <span class="badge" id="watchlistCount">–</span>
+    </div>
+    <form class="add-form" id="addForm">
+      <input id="addName" type="text" placeholder="Site name (optional)" />
+      <input id="addUrl" type="text" placeholder="https://example.com/rfps" required />
+      <button type="submit" class="btn primary">Add URL</button>
+    </form>
+    <div class="import-row">
+      <label class="btn" for="csvFile">Bulk import CSV</label>
+      <input id="csvFile" type="file" accept=".csv,text/csv" style="display:none;" />
+      <span class="mono" id="csvFileName">name,url columns expected</span>
+      <button type="button" id="deleteSelectedBtn" class="btn" style="margin-left:auto;color:var(--bad);border-color:var(--bad);display:none;">Delete Selected</button>
+    </div>
+    <div class="status-msg" id="watchlistStatus"></div>
+    <div class="panel-body" id="watchlistBody">
+      <div class="empty">Loading…</div>
+    </div>
+  </div>
+
+  <footer>
+    Reads <span class="mono">webwatch_results.csv</span>, <span class="mono">webwatch_log.txt</span> and
+    <span class="mono">webwatch_cache.json</span> directly from GitHub (raw.githubusercontent.com) on each refresh.
+    URLs added or imported here are saved permanently to
+    <span class="mono">webwatch-watchlist.csv</span> via the <span class="mono">/api/watchlist</span> function
+    so the monitor never forgets them.
+  </footer>
+</div>
+
+<script>
+(function () {
+  const PASSWORD = 'beta';
+  const SESSION_KEY = 'webwatch_unlocked';
+
+  const gate = document.getElementById('gate');
+  const dashboard = document.getElementById('dashboard');
+  const gatePassword = document.getElementById('gatePassword');
+  const gateSubmit = document.getElementById('gateSubmit');
+  const gateError = document.getElementById('gateError');
+
+  function unlock() {
+    gate.style.display = 'none';
+    dashboard.style.display = '';
+    sessionStorage.setItem(SESSION_KEY, '1');
+    refreshAll();
+    loadWatchlist();
+  }
+
+  function tryUnlock() {
+    if (gatePassword.value === PASSWORD) {
+      gateError.textContent = '';
+      unlock();
+    } else {
+      gateError.textContent = 'Incorrect password.';
+    }
+  }
+
+  gateSubmit.addEventListener('click', tryUnlock);
+  gatePassword.addEventListener('keydown', (e) => { if (e.key === 'Enter') tryUnlock(); });
+
+  const alreadyUnlocked = sessionStorage.getItem(SESSION_KEY) === '1';
+  if (alreadyUnlocked) {
+    gate.style.display = 'none';
+    dashboard.style.display = '';
+  }
+
+  const repoInput = document.getElementById('repoInput');
+  const branchInput = document.getElementById('branchInput');
+  const refreshBtn = document.getElementById('refreshBtn');
+  const downloadCsv = document.getElementById('downloadCsv');
+
+  function rawUrl(path) {
+    const repo = repoInput.value.trim();
+    const branch = branchInput.value.trim() || 'main';
+    return `https://raw.githubusercontent.com/${repo}/${branch}/${path}?t=${Date.now()}`;
+  }
+
+  // RFC4180-ish CSV parser: handles quoted fields with embedded commas and
+  // quotes ("") - a naive split(',') corrupts any URL whose query string
+  // contains a comma inside quotes.
+  function parseCsvRows(text) {
+    const rows = [];
+    let row = [];
+    let field = '';
+    let inQuotes = false;
+    const s = text.replace(/\r\n/g, '\n');
+    for (let i = 0; i < s.length; i++) {
+      const c = s[i];
+      if (inQuotes) {
+        if (c === '"') {
+          if (s[i + 1] === '"') { field += '"'; i++; }
+          else inQuotes = false;
+        } else {
+          field += c;
+        }
+      } else if (c === '"') {
+        inQuotes = true;
+      } else if (c === ',') {
+        row.push(field);
+        field = '';
+      } else if (c === '\n') {
+        row.push(field);
+        rows.push(row);
+        row = [];
+        field = '';
+      } else {
+        field += c;
+      }
+    }
+    if (field.length > 0 || row.length > 0) {
+      row.push(field);
+      rows.push(row);
+    }
+    return rows.filter(r => r.some(c => c.trim().length > 0));
+  }
+
+  function parseCsv(text) {
+    const csvRows = parseCsvRows(text);
+    if (csvRows.length === 0) return { headers: [], rows: [] };
+    const headers = csvRows[0];
+    const rows = csvRows.slice(1).map(cells => {
+      const row = {};
+      headers.forEach((h, i) => { row[h] = cells[i] !== undefined ? cells[i] : ''; });
+      return row;
+    });
+    return { headers, rows };
+  }
+
+  function classifyLogLine(line) {
+    if (/CHANGE DETECTED/i.test(line)) return 'change';
+    if (/error|could not|unreachable|timeout|connection error/i.test(line)) return 'error';
+    if (/no change|webhook sent|monitor complete/i.test(line)) return 'ok';
+    return '';
+  }
+
+  async function fetchText(path) {
+    const res = await fetch(rawUrl(path), { cache: 'no-store' });
+    if (!res.ok) throw new Error(`${path}: HTTP ${res.status}`);
+    return res.text();
+  }
+
+  async function loadChanges() {
+    const body = document.getElementById('changesBody');
+    try {
+      const text = await fetchText('webwatch_results.csv');
+      const { rows } = parseCsv(text);
+      document.getElementById('statChanges').textContent = rows.length;
+      downloadCsv.href = rawUrl('webwatch_results.csv');
+
+      if (rows.length === 0) {
+        body.innerHTML = '<div class="empty">No changes detected yet.</div>';
+        return;
+      }
+
+      const sorted = rows.slice().reverse(); // most recent first
+      let html = '<table><colgroup><col style="width:14%"><col style="width:18%"><col style="width:12%"><col style="width:56%"></colgroup><thead><tr><th>Timestamp</th><th>Site</th><th>Meaningful?</th><th>What Changed</th></tr></thead><tbody>';
+      for (const r of sorted) {
+        const meaningful = (r.meaningful || '').toLowerCase() === 'yes';
+        const meaningfulBadge = r.meaningful
+          ? `<span class="badge" style="${meaningful ? 'color:var(--good);' : 'color:var(--muted);'}">${meaningful ? 'Yes - sent to webhook' : 'No - filtered out'}</span>`
+          : '<span class="badge">–</span>';
+        const diffId = 'diff-' + Math.random().toString(36).slice(2);
+        html += `<tr>
+          <td style="white-space:nowrap;">${escapeHtml(r.timestamp || '')}</td>
+          <td>
+            <div>${escapeHtml(r.name || '')}</div>
+            <a class="site-link" href="${escapeAttr(r.url || '#')}" target="_blank" rel="noopener" style="font-size:0.75rem;">${escapeHtml(r.url || '')}</a>
+          </td>
+          <td>${meaningfulBadge}</td>
+          <td>
+            <div>${escapeHtml(r.summary || 'Content changed (no summary available).')}</div>
+            ${r.diff ? `<details style="margin-top:6px;"><summary style="cursor:pointer;color:var(--accent);font-size:0.75rem;">View diff</summary><pre class="mono" style="white-space:pre-wrap;margin-top:6px;">${escapeHtml(r.diff)}</pre></details>` : ''}
+          </td>
+        </tr>`;
+      }
+      html += '</tbody></table>';
+      body.innerHTML = html;
+    } catch (e) {
+      document.getElementById('statChanges').textContent = '–';
+      downloadCsv.href = rawUrl('webwatch_results.csv');
+      body.innerHTML = `<div class="empty">Couldn't load webwatch_results.csv yet (${escapeHtml(e.message)}). It's created after the first run that detects a change.</div>`;
+    }
+  }
+
+  async function loadLog() {
+    const pre = document.getElementById('logBody');
+    const meta = document.getElementById('logMeta');
+    try {
+      const text = await fetchText('webwatch_log.txt');
+      const lines = text.replace(/\r\n/g, '\n').split('\n').filter(l => l.length > 0);
+      const lastLines = lines.slice(-500);
+      pre.innerHTML = lastLines.map(l => `<span class="log-line ${classifyLogLine(l)}">${escapeHtml(l)}</span>`).join('\n');
+      meta.textContent = `${lines.length} lines total, showing last ${lastLines.length}`;
+
+      // Derive last run timestamp + status from the FULL log (never the
+      // truncated display slice above), so stats are always accurate even
+      // if a single run produces more lines than we render.
+      const timestampMatch = [...lines].reverse().find(l => /^\[/.test(l));
+      if (timestampMatch) {
+        const m = timestampMatch.match(/^\[([^\]]+)\]/);
+        document.getElementById('statLastRun').textContent = m ? m[1] : '–';
+      }
+      const completeLine = [...lines].reverse().find(l => /monitor complete/i.test(l));
+      if (completeLine) {
+        // New format: "monitor complete. watchlist=98 checked=93 skipped=5 changes=2 meaningful=1"
+        const watchlistM = completeLine.match(/watchlist=(\d+)/);
+        const checkedM = completeLine.match(/checked=(\d+)/);
+        const skippedM = completeLine.match(/skipped=(\d+)/);
+        const changesM = completeLine.match(/changes=(\d+)/) || completeLine.match(/(\d+)\s+change/);
+
+        if (checkedM && watchlistM) {
+          document.getElementById('statCoverage').textContent =
+            `${checkedM[1]} / ${watchlistM[1]} checked${skippedM ? ` (${skippedM[1]} skipped)` : ''}`;
+        } else {
+          document.getElementById('statCoverage').textContent = '–';
+        }
+
+        const changeCount = changesM ? changesM[1] : '0';
+        document.getElementById('statStatus').textContent = changeCount !== '0'
+          ? `⚠ ${changeCount} change(s)`
+          : '✓ No changes';
+      } else {
+        document.getElementById('statStatus').textContent = 'Unknown';
+        document.getElementById('statCoverage').textContent = '–';
+      }
+    } catch (e) {
+      pre.textContent = `Couldn't load webwatch_log.txt (${e.message}).`;
+      meta.textContent = '–';
+      document.getElementById('statLastRun').textContent = '–';
+      document.getElementById('statStatus').textContent = '–';
+      document.getElementById('statCoverage').textContent = '–';
+    }
+  }
+
+  async function loadCache() {
+    // Kept for potential future use; "Sites Watched" is now driven by the
+    // full watchlist (see renderWatchlist) rather than the cache, since the
+    // cache only contains sites that were successfully reachable on the
+    // last run and would otherwise undercount the watchlist.
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+  function escapeAttr(s) { return escapeHtml(s); }
+
+  function refreshAll() {
+    loadChanges();
+    loadLog();
+    loadCache();
+  }
+
+  refreshBtn.addEventListener('click', () => { refreshAll(); loadWatchlist(); });
+
+  // ------------------------------------------------------------------
+  // Run Check Now — dispatches the monitor GitHub Actions workflow
+  // ------------------------------------------------------------------
+  const runCheckBtn = document.getElementById('runCheckBtn');
+  const runCheckStatus = document.getElementById('runCheckStatus');
+
+  runCheckBtn.addEventListener('click', async () => {
+    runCheckBtn.disabled = true;
+    runCheckBtn.textContent = 'Starting…';
+    runCheckStatus.className = 'status-msg';
+    runCheckStatus.textContent = '';
+    try {
+      const res = await fetch('/api/run-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-WebWatch-Password': PASSWORD },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        runCheckStatus.className = 'status-msg error';
+        runCheckStatus.textContent = data.error || 'Failed to start the check.';
+      } else {
+        runCheckStatus.className = 'status-msg ok';
+        runCheckStatus.innerHTML = `${escapeHtml(data.message || 'Check started.')} <a class="site-link" href="${escapeAttr(data.actionsUrl)}" target="_blank" rel="noopener">View run on GitHub</a> — refresh here once it finishes.`;
+      }
+    } catch (e) {
+      runCheckStatus.className = 'status-msg error';
+      runCheckStatus.textContent = `Failed to start the check: ${e.message}`;
+    } finally {
+      runCheckBtn.disabled = false;
+      runCheckBtn.textContent = 'Run Check Now';
+    }
+  });
+
+  // ------------------------------------------------------------------
+  // Watchlist management (add one-by-one, or bulk CSV import)
+  // ------------------------------------------------------------------
+
+  const addForm = document.getElementById('addForm');
+  const addName = document.getElementById('addName');
+  const addUrl = document.getElementById('addUrl');
+  const csvFile = document.getElementById('csvFile');
+  const csvFileName = document.getElementById('csvFileName');
+  const watchlistBody = document.getElementById('watchlistBody');
+  const watchlistCount = document.getElementById('watchlistCount');
+  const watchlistStatus = document.getElementById('watchlistStatus');
+  const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+
+  function setWatchlistStatus(message, kind) {
+    watchlistStatus.textContent = message || '';
+    watchlistStatus.className = 'status-msg' + (kind ? ' ' + kind : '');
+  }
+
+  function updateDeleteButtonVisibility() {
+    const anyChecked = watchlistBody.querySelectorAll('input.row-select:checked').length > 0;
+    deleteSelectedBtn.style.display = anyChecked ? '' : 'none';
+  }
+
+  function renderWatchlist(rows) {
+    watchlistCount.textContent = `${rows.length} site${rows.length === 1 ? '' : 's'}`;
+    document.getElementById('statSites').textContent = rows.length;
+    deleteSelectedBtn.style.display = 'none';
+    if (rows.length === 0) {
+      watchlistBody.innerHTML = '<div class="empty">No URLs yet. Add one above or bulk import a CSV.</div>';
+      return;
+    }
+    let html = `<table><thead><tr>
+      <th style="width:28px;"><input type="checkbox" id="selectAllRows" /></th>
+      <th>Name</th><th>URL</th><th style="width:120px;">Actions</th>
+    </tr></thead><tbody>`;
+    for (const r of rows) {
+      const safeUrl = escapeAttr(r.url);
+      html += `<tr data-url="${safeUrl}">
+        <td><input type="checkbox" class="row-select" value="${safeUrl}" /></td>
+        <td class="cell-name">${escapeHtml(r.name || '')}</td>
+        <td class="cell-url"><a class="site-link" href="${safeUrl}" target="_blank" rel="noopener">${escapeHtml(r.url)}</a></td>
+        <td>
+          <button type="button" class="btn edit-row-btn" style="padding:4px 10px;font-size:0.75rem;">Edit</button>
+          <button type="button" class="btn delete-row-btn" style="padding:4px 10px;font-size:0.75rem;color:var(--bad);border-color:var(--bad);">Delete</button>
+        </td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    watchlistBody.innerHTML = html;
+
+    document.getElementById('selectAllRows').addEventListener('change', (e) => {
+      watchlistBody.querySelectorAll('input.row-select').forEach(cb => { cb.checked = e.target.checked; });
+      updateDeleteButtonVisibility();
+    });
+    watchlistBody.querySelectorAll('input.row-select').forEach(cb => {
+      cb.addEventListener('change', updateDeleteButtonVisibility);
+    });
+    watchlistBody.querySelectorAll('.delete-row-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const tr = e.target.closest('tr');
+        const url = tr.dataset.url;
+        const name = tr.querySelector('.cell-name').textContent;
+        if (!confirm(`Remove "${name || url}" from the watchlist?`)) return;
+        await deleteEntries([url]);
+      });
+    });
+    watchlistBody.querySelectorAll('.edit-row-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => startEditRow(e.target.closest('tr')));
+    });
+  }
+
+  function startEditRow(tr) {
+    const oldUrl = tr.dataset.url;
+    const nameCell = tr.querySelector('.cell-name');
+    const urlCell = tr.querySelector('.cell-url');
+    const currentName = nameCell.textContent;
+    const currentUrl = tr.querySelector('a.site-link').getAttribute('href');
+
+    nameCell.innerHTML = `<input type="text" class="edit-name" value="${escapeAttr(currentName)}" style="width:100%;" />`;
+    urlCell.innerHTML = `<input type="text" class="edit-url" value="${escapeAttr(currentUrl)}" style="width:100%;" />`;
+
+    const actionsCell = tr.children[3];
+    actionsCell.innerHTML = `
+      <button type="button" class="btn primary save-row-btn" style="padding:4px 10px;font-size:0.75rem;">Save</button>
+      <button type="button" class="btn cancel-row-btn" style="padding:4px 10px;font-size:0.75rem;">Cancel</button>
+    `;
+
+    actionsCell.querySelector('.cancel-row-btn').addEventListener('click', () => loadWatchlist());
+    actionsCell.querySelector('.save-row-btn').addEventListener('click', async () => {
+      const newName = tr.querySelector('.edit-name').value.trim();
+      const newUrl = tr.querySelector('.edit-url').value.trim();
+      if (!newUrl) { setWatchlistStatus('URL cannot be empty.', 'error'); return; }
+      await editEntry(oldUrl, { name: newName, url: newUrl });
+    });
+  }
+
+  async function loadWatchlist() {
+    try {
+      const res = await fetch('/api/watchlist', { cache: 'no-store' });
+      const data = await res.json();
+      if (data.warning) setWatchlistStatus(data.warning, 'error');
+      renderWatchlist(data.rows || []);
+    } catch (e) {
+      watchlistBody.innerHTML = `<div class="empty">Couldn't load the watchlist (${escapeHtml(e.message)}).</div>`;
+    }
+  }
+
+  async function submitEntries(entries, successLabel) {
+    setWatchlistStatus('Saving…');
+    try {
+      const res = await fetch('/api/watchlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-WebWatch-Password': PASSWORD },
+        body: JSON.stringify({ entries }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setWatchlistStatus(data.error || 'Failed to save.', 'error');
+        return;
+      }
+      renderWatchlist(data.rows || []);
+      setWatchlistStatus(`${successLabel} — ${data.added} added, ${data.updated} updated, ${data.total} total.`, 'ok');
+    } catch (e) {
+      setWatchlistStatus(`Failed to save: ${e.message}`, 'error');
+    }
+  }
+
+  async function editEntry(oldUrl, entry) {
+    setWatchlistStatus('Saving…');
+    try {
+      const res = await fetch('/api/watchlist', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'X-WebWatch-Password': PASSWORD },
+        body: JSON.stringify({ oldUrl, entry }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setWatchlistStatus(data.error || 'Failed to save edit.', 'error');
+        return;
+      }
+      renderWatchlist(data.rows || []);
+      setWatchlistStatus('Entry updated.', 'ok');
+    } catch (e) {
+      setWatchlistStatus(`Failed to save edit: ${e.message}`, 'error');
+    }
+  }
+
+  async function deleteEntries(urls) {
+    setWatchlistStatus('Deleting…');
+    try {
+      const res = await fetch('/api/watchlist', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', 'X-WebWatch-Password': PASSWORD },
+        body: JSON.stringify({ urls }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setWatchlistStatus(data.error || 'Failed to delete.', 'error');
+        return;
+      }
+      renderWatchlist(data.rows || []);
+      setWatchlistStatus(`Removed ${data.removed} URL(s) — ${data.total} remaining.`, 'ok');
+    } catch (e) {
+      setWatchlistStatus(`Failed to delete: ${e.message}`, 'error');
+    }
+  }
+
+  deleteSelectedBtn.addEventListener('click', async () => {
+    const urls = Array.from(watchlistBody.querySelectorAll('input.row-select:checked')).map(cb => cb.value);
+    if (urls.length === 0) return;
+    if (!confirm(`Remove ${urls.length} selected URL(s) from the watchlist?`)) return;
+    await deleteEntries(urls);
+  });
+
+  addForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const url = addUrl.value.trim();
+    if (!url) return;
+    await submitEntries([{ name: addName.value.trim(), url }], 'Added');
+    addForm.reset();
+  });
+
+  function parseWatchlistCsv(text) {
+    const csvRows = parseCsvRows(text);
+    if (csvRows.length === 0) return [];
+    const header = (csvRows[0][0] || '').toLowerCase() + ',' + (csvRows[0][1] || '').toLowerCase();
+    const startIdx = /name/.test(header) && /url/.test(header) ? 1 : 0;
+    const entries = [];
+    for (const cells of csvRows.slice(startIdx)) {
+      if (cells.length === 1) {
+        entries.push({ name: '', url: cells[0].trim() });
+      } else {
+        entries.push({ name: (cells[0] || '').trim(), url: (cells[1] || '').trim() });
+      }
+    }
+    return entries.filter(e => e.url);
+  }
+
+  csvFile.addEventListener('change', async () => {
+    const file = csvFile.files[0];
+    if (!file) return;
+    csvFileName.textContent = file.name;
+    const text = await file.text();
+    const entries = parseWatchlistCsv(text);
+    if (entries.length === 0) {
+      setWatchlistStatus('No valid rows found in that CSV (expected name,url columns).', 'error');
+      return;
+    }
+    await submitEntries(entries, `Imported ${file.name}`);
+    csvFile.value = '';
+  });
+
+  if (alreadyUnlocked) {
+    refreshAll();
+    loadWatchlist();
+  }
+})();
+</script>
+</body>
+</html>

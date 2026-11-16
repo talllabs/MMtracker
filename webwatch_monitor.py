@@ -6,9 +6,16 @@ Monitors tourism/procurement sites for changes and sends alerts to Base44.
 What it does:
 - Reads your watchlist (CSV)
 - Checks each site for updates
-- Compares with previous data
-- Sends webhook to Base44 when changes detected (optional - skipped if not configured)
-- Records every detected change to a results CSV
+- Compares with previous data (using cleaned text, not raw HTML)
+- With an LLM key configured (OPENAI_API_KEY or ANTHROPIC_API_KEY), extracts
+  the individual RFP/tender listings on each page and alerts only when a
+  genuinely NEW listing appears - not on any whole-page byte change - so
+  login walls, cookie banners, ad rotation, and redirects don't count as
+  "changes". Without a key, falls back to whole-page diff + always-meaningful.
+- Sends the changed content (not just the URL) to the Base44 webhook when
+  the change is meaningful
+- Records every detected change - with a summary of what changed - to a
+  results CSV
 - Keeps a log of all checks
 
 NEW TO CODING? Here's what each part means:
@@ -20,9 +27,11 @@ NEW TO CODING? Here's what each part means:
 """
 
 import csv
+import re
 import requests
 import json
 import hashlib
+import difflib
 from datetime import datetime
 from pathlib import Path
 import os
@@ -38,16 +47,31 @@ CACHE_FILE = os.getenv("WEBWATCH_CACHE_FILE", str(REPO_ROOT / "webwatch_cache.js
 LOG_FILE = os.getenv("WEBWATCH_LOG_FILE", str(REPO_ROOT / "webwatch_log.txt"))
 RESULTS_FILE = os.getenv("WEBWATCH_RESULTS_FILE", str(REPO_ROOT / "webwatch_results.csv"))  # Detected changes, one row per run
 
-# YOUR BASE44 WEBHOOK URL - Read from GitHub Secrets (or environment variable)
-# On GitHub: Settings > Secrets > Actions > Add BASE44_WEBHOOK_URL
-# Locally: set it manually or use environment variable
-# Leave unset to skip the webhook and just log results to RESULTS_FILE
-BASE44_WEBHOOK_URL = os.getenv("BASE44_WEBHOOK_URL", "")
+# YOUR BASE44 WEBHOOK URL
+# Defaults to the permanent Super RFP Hunter endpoint below. Override via the
+# BASE44_WEBHOOK_URL GitHub Secret (Settings > Secrets > Actions) or environment
+# variable if it ever needs to change. Set the env var to an empty string to
+# disable the webhook and only log results to RESULTS_FILE.
+BASE44_WEBHOOK_URL = os.getenv(
+    "BASE44_WEBHOOK_URL",
+    "https://super-rfp-hunter-565f90d3.base44.app/functions/receiveRfpLead",
+)
+
+# Optional: an Anthropic API key (GitHub Secret ANTHROPIC_API_KEY) lets the
+# monitor ask an LLM whether a detected change is a *meaningful* new RFP/
+# tender opportunity - vs. noise like a date stamp, ad rotation, or footer
+# text - before sending the webhook. Without a key, every detected change is
+# treated as meaningful (old behavior). Set ONE of these (OpenAI is tried
+# first if both happen to be set).
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001")
 
 # How much content to check (in characters).
 # Smaller = faster, but might miss subtle changes
 # Larger = catches everything but slower
-CONTENT_SAMPLE_SIZE = 2000
+CONTENT_SAMPLE_SIZE = 4000
 
 
 # ============================================================================
@@ -70,6 +94,26 @@ def log_message(message):
         f.write(log_entry)
 
 
+def strip_html(html):
+    """
+    Reduces raw HTML down to visible-ish text, so hashing/diffing isn't
+    tripped up by markup-only changes (a changed class name, an extra
+    <div>, a script tag update) that aren't real content changes.
+
+    Args:
+        html (str): Raw HTML
+
+    Returns:
+        str: Cleaned, whitespace-collapsed text
+    """
+    text = re.sub(r"<script.*?</script>", " ", html, flags=re.S | re.I)
+    text = re.sub(r"<style.*?</style>", " ", text, flags=re.S | re.I)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"&nbsp;", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
 def fetch_site_content(url):
     """
     Goes to a website and grabs the text content.
@@ -80,16 +124,20 @@ def fetch_site_content(url):
         url (str): The website address to check
 
     Returns:
-        str: The text content, or None if something went wrong
+        str: The cleaned text content, or None if something went wrong
     """
     try:
         # timeout=10 means "wait max 10 seconds, then give up"
-        response = requests.get(url, timeout=10)
+        response = requests.get(
+            url,
+            timeout=10,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; WebWatchMonitor/1.0)"},
+        )
 
         # Check if the request was successful (200 = success)
         if response.status_code == 200:
-            # Return only first CONTENT_SAMPLE_SIZE characters
-            return response.text[:CONTENT_SAMPLE_SIZE]
+            # Return only first CONTENT_SAMPLE_SIZE characters of cleaned text
+            return strip_html(response.text)[:CONTENT_SAMPLE_SIZE]
         else:
             log_message(f"warning: {url} returned status {response.status_code}")
             return None
@@ -123,16 +171,318 @@ def create_content_hash(content):
     return hashlib.sha256(content.encode()).hexdigest()
 
 
+def build_diff(old_text, new_text, max_chars=1500):
+    """
+    Builds a short, human-readable unified diff between the old and new
+    page content, so both the webhook and the dashboard can show what
+    actually changed instead of just "content changed".
+
+    Args:
+        old_text (str): Previously seen content
+        new_text (str): Newly fetched content
+        max_chars (int): Truncate the diff to this many characters
+
+    Returns:
+        str: A unified diff (truncated)
+    """
+    old_lines = [old_text[i:i + 120] for i in range(0, len(old_text), 120)]
+    new_lines = [new_text[i:i + 120] for i in range(0, len(new_text), 120)]
+    diff = "\n".join(
+        difflib.unified_diff(old_lines, new_lines, lineterm="", n=1)
+    )
+    if len(diff) > max_chars:
+        diff = diff[:max_chars] + "... (truncated)"
+    return diff
+
+
+def summarize_diff_added_lines(old_text, new_text, max_lines=5, max_chars=280):
+    """
+    Builds a short, plain-English preview of what was actually added to a
+    page, for use as the log/webhook summary when no LLM key is configured.
+    Pulls out only the added ("+") lines from the unified diff so the log
+    shows real new content instead of a generic "content changed" message.
+
+    Args:
+        old_text (str): Previously seen content
+        new_text (str): Newly fetched content
+        max_lines (int): Max number of added lines to include
+        max_chars (int): Truncate the combined preview to this many characters
+
+    Returns:
+        str: A human-readable summary of the added content
+    """
+    diff = build_diff(old_text, new_text, max_chars=100000)
+    added_lines = [
+        line[1:].strip() for line in diff.splitlines()
+        if line.startswith("+") and not line.startswith("+++") and line[1:].strip()
+    ]
+
+    if not added_lines:
+        return "Content changed - no clearly new text detected, review manually."
+
+    preview = " | ".join(added_lines[:max_lines])
+    if len(preview) > max_chars:
+        preview = preview[:max_chars] + "..."
+    if len(added_lines) > max_lines:
+        preview += f" (+{len(added_lines) - max_lines} more added lines)"
+
+    return f"Content added: {preview}"
+
+
+def build_classification_prompt(site_name, old_text, new_text):
+    """
+    Builds the shared prompt used to ask an LLM whether a detected change
+    is a genuinely new RFP/tender opportunity, regardless of provider.
+    """
+    return f"""You are monitoring "{site_name}" for new RFP / tender / procurement opportunities.
+The page content changed. Compare the OLD and NEW text below and decide:
+Does this change represent a genuinely NEW RFP, tender, bid opportunity, or
+procurement notice being added (or a meaningful update to one)? Ignore
+changes that are just date stamps, "last updated" timestamps, ad rotation,
+cookie banners, unrelated navigation/footer text, or cosmetic differences.
+
+Respond with ONLY a JSON object, no other text, in this exact shape:
+{{"meaningful": true or false, "summary": "one or two sentence plain-English summary of what specifically changed, focused on any new opportunity"}}
+
+OLD TEXT:
+{old_text[:2000]}
+
+NEW TEXT:
+{new_text[:2000]}"""
+
+
+def parse_classification_json(site_name, text):
+    """
+    Extracts and parses the {"meaningful": ..., "summary": ...} JSON object
+    an LLM was asked to return. Falls back to "treat as meaningful" if the
+    response can't be parsed, since silently dropping a real opportunity is
+    worse than an extra webhook call.
+    """
+    match = re.search(r"\{.*\}", text, re.S)
+    if not match:
+        log_message(f"warning: LLM response for {site_name} wasn't valid JSON, treating as meaningful")
+        return True, "LLM response could not be parsed - content changed, review manually."
+    parsed = json.loads(match.group(0))
+    return bool(parsed.get("meaningful", True)), str(parsed.get("summary", "")).strip()
+
+
+def classify_with_openai(site_name, old_text, new_text):
+    prompt = build_classification_prompt(site_name, old_text, new_text)
+    response = requests.post(
+        "https://api.openai.com/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": OPENAI_MODEL,
+            "max_tokens": 300,
+            "messages": [{"role": "user", "content": prompt}],
+        },
+        timeout=20,
+    )
+    response.raise_for_status()
+    data = response.json()
+    text = data["choices"][0]["message"]["content"]
+    return parse_classification_json(site_name, text)
+
+
+def classify_with_anthropic(site_name, old_text, new_text):
+    prompt = build_classification_prompt(site_name, old_text, new_text)
+    response = requests.post(
+        "https://api.anthropic.com/v1/messages",
+        headers={
+            "x-api-key": ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        },
+        json={
+            "model": ANTHROPIC_MODEL,
+            "max_tokens": 300,
+            "messages": [{"role": "user", "content": prompt}],
+        },
+        timeout=20,
+    )
+    response.raise_for_status()
+    data = response.json()
+    text = "".join(block.get("text", "") for block in data.get("content", []))
+    return parse_classification_json(site_name, text)
+
+
+def classify_change(site_name, old_text, new_text):
+    """
+    Asks an LLM (OpenAI if OPENAI_API_KEY is set, otherwise Anthropic if
+    ANTHROPIC_API_KEY is set) whether a detected change represents a
+    meaningful new RFP/tender opportunity being posted, as opposed to noise
+    (a date stamp, ad rotation, unrelated footer text).
+
+    Without either API key, every change is treated as meaningful (the old,
+    always-notify behavior).
+
+    Args:
+        site_name (str): Name of the site
+        old_text (str): Previously seen content
+        new_text (str): Newly fetched content
+
+    Returns:
+        tuple: (meaningful: bool, summary: str)
+    """
+    if not OPENAI_API_KEY and not ANTHROPIC_API_KEY:
+        return True, summarize_diff_added_lines(old_text, new_text)
+
+    try:
+        if OPENAI_API_KEY:
+            return classify_with_openai(site_name, old_text, new_text)
+        return classify_with_anthropic(site_name, old_text, new_text)
+    except Exception as e:
+        log_message(f"warning: LLM classification failed for {site_name}: {str(e)} - treating as meaningful")
+        return True, f"LLM classification failed ({str(e)}) - content changed, review manually."
+
+
+def build_extraction_prompt(site_name, text):
+    """
+    Builds the shared prompt used to ask an LLM to pull out individual
+    RFP/tender/bid listings from a page, instead of treating the whole page
+    as one blob. This is what lets us alert on "a new listing appeared"
+    instead of "the page's bytes changed" - which is what was causing
+    noise from login walls, cookie banners, ad rotation, and redirects.
+    """
+    return f"""You are scanning the page below - from a site called "{site_name}" that is
+monitored for RFP / tender / bid / procurement opportunities - and need to
+extract a list of the INDIVIDUAL opportunity listings visible on it (each
+distinct RFP, tender, bid notice, or procurement opportunity).
+
+Rules:
+- If this page is a login wall, error page, redirect/interstitial, cookie
+  banner, CAPTCHA challenge, or a generic page with no actual listings
+  visible, return an empty array.
+- Each array entry should be a short string identifying ONE listing -
+  ideally "Title (deadline or reference ID if shown)". Do not include
+  navigation links, ads, or unrelated site content.
+- Do not invent listings that aren't actually on the page.
+
+Respond with ONLY a JSON array of strings, no other text. Example:
+["Downtown Tourism Marketing RFP (due Sept 15, 2026)", "Visitor Center Signage Bid #2026-114"]
+or [] if there are no real listings on this page.
+
+PAGE TEXT:
+{text[:3000]}"""
+
+
+def parse_extraction_json(site_name, text):
+    """
+    Extracts and parses the JSON array of listing strings an LLM was asked
+    to return. Falls back to an empty list (treated as "couldn't extract,
+    don't alert") if the response can't be parsed - noisy false positives
+    from a broken parse are worse than a missed run here, since the next
+    run will try again.
+    """
+    match = re.search(r"\[.*\]", text, re.S)
+    if not match:
+        log_message(f"warning: listing extraction response for {site_name} wasn't valid JSON")
+        return []
+    try:
+        parsed = json.loads(match.group(0))
+        return [str(item).strip() for item in parsed if str(item).strip()]
+    except Exception:
+        log_message(f"warning: listing extraction response for {site_name} could not be parsed as JSON")
+        return []
+
+
+def extract_with_openai(site_name, text):
+    prompt = build_extraction_prompt(site_name, text)
+    response = requests.post(
+        "https://api.openai.com/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": OPENAI_MODEL,
+            "max_tokens": 600,
+            "messages": [{"role": "user", "content": prompt}],
+        },
+        timeout=20,
+    )
+    response.raise_for_status()
+    data = response.json()
+    text_out = data["choices"][0]["message"]["content"]
+    return parse_extraction_json(site_name, text_out)
+
+
+def extract_with_anthropic(site_name, text):
+    prompt = build_extraction_prompt(site_name, text)
+    response = requests.post(
+        "https://api.anthropic.com/v1/messages",
+        headers={
+            "x-api-key": ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        },
+        json={
+            "model": ANTHROPIC_MODEL,
+            "max_tokens": 600,
+            "messages": [{"role": "user", "content": prompt}],
+        },
+        timeout=20,
+    )
+    response.raise_for_status()
+    data = response.json()
+    text_out = "".join(block.get("text", "") for block in data.get("content", []))
+    return parse_extraction_json(site_name, text_out)
+
+
+def extract_listings(site_name, text):
+    """
+    Asks an LLM to extract individual RFP/tender listings from a page's
+    text, so changes can be compared listing-by-listing instead of as one
+    whole-page blob. Requires OPENAI_API_KEY or ANTHROPIC_API_KEY; without
+    one, returns None (the caller falls back to whole-page diff+classify).
+
+    Args:
+        site_name (str): Name of the site
+        text (str): Cleaned page text
+
+    Returns:
+        list[str] or None: Extracted listing strings, or None if no LLM
+            key is configured or extraction failed
+    """
+    if not OPENAI_API_KEY and not ANTHROPIC_API_KEY:
+        return None
+
+    try:
+        if OPENAI_API_KEY:
+            return extract_with_openai(site_name, text)
+        return extract_with_anthropic(site_name, text)
+    except Exception as e:
+        log_message(f"warning: listing extraction failed for {site_name}: {str(e)}")
+        return None
+
+
+def normalize_listing(listing):
+    """Loose-normalizes a listing string so trivial formatting differences don't register as 'new'."""
+    return re.sub(r"[^a-z0-9]+", " ", listing.lower()).strip()
+
+
 def load_cache():
     """
     Reads the cache file (what we saw last time).
 
     Returns:
-        dict: A dictionary like {"url": "hash", "url2": "hash2"}
+        dict: {"url": {"hash": "...", "content": "...", "listings": [...]}}
     """
     if Path(CACHE_FILE).exists():
         with open(CACHE_FILE, "r") as f:
-            return json.load(f)
+            data = json.load(f)
+        # Migrate from older formats transparently
+        migrated = {}
+        for url, value in data.items():
+            if isinstance(value, str):
+                migrated[url] = {"hash": value, "content": "", "listings": None}
+            else:
+                value.setdefault("listings", None)
+                migrated[url] = value
+        return migrated
     return {}  # Empty dict if no cache yet
 
 
@@ -147,9 +497,10 @@ def save_cache(cache):
         json.dump(cache, f, indent=2)
 
 
-def send_webhook(site_name, url, change_details):
+def send_webhook(site_name, url, summary, diff, old_hash, new_hash):
     """
-    Sends a webhook to Base44 alerting about the change.
+    Sends a webhook to Base44 alerting about the change - including the
+    actual changed content (a diff and an LLM summary), not just the URL.
 
     This is how your super agent gets notified!
     If BASE44_WEBHOOK_URL isn't set, this is skipped (results still go to RESULTS_FILE).
@@ -157,7 +508,10 @@ def send_webhook(site_name, url, change_details):
     Args:
         site_name (str): Name of the site that changed
         url (str): The URL that changed
-        change_details (str): Description of what changed
+        summary (str): Plain-English summary of what changed
+        diff (str): Unified diff of the old vs. new content
+        old_hash (str): Previous content hash
+        new_hash (str): New content hash
     """
     if not BASE44_WEBHOOK_URL:
         return
@@ -167,8 +521,11 @@ def send_webhook(site_name, url, change_details):
         "timestamp": datetime.now().isoformat(),
         "site_name": site_name,
         "url": url,
-        "details": change_details,
-        "action": "Check for new RFP opportunities"
+        "summary": summary,
+        "diff": diff,
+        "old_hash": old_hash,
+        "new_hash": new_hash,
+        "action": "Check for new RFP opportunities",
     }
 
     try:
@@ -189,11 +546,14 @@ def record_results(changes_found):
     without relying on the webhook.
 
     Args:
-        changes_found (list): List of dicts with name/url/old_hash/new_hash
+        changes_found (list): List of dicts with name/url/summary/etc.
     """
     file_exists = Path(RESULTS_FILE).exists()
+    fieldnames = [
+        "timestamp", "name", "url", "meaningful", "summary", "diff", "old_hash", "new_hash",
+    ]
     with open(RESULTS_FILE, "a", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["timestamp", "name", "url", "old_hash", "new_hash"])
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
         if not file_exists:
             writer.writeheader()
         for change in changes_found:
@@ -201,6 +561,9 @@ def record_results(changes_found):
                 "timestamp": datetime.now().isoformat(),
                 "name": change["name"],
                 "url": change["url"],
+                "meaningful": "yes" if change["meaningful"] else "no",
+                "summary": change["summary"],
+                "diff": change["diff"],
                 "old_hash": change["old_hash"],
                 "new_hash": change["new_hash"],
             })
@@ -241,6 +604,8 @@ def run_monitor():
     # Check if webhook is configured
     if not BASE44_WEBHOOK_URL:
         log_message("BASE44_WEBHOOK_URL not set - skipping webhook, results will go to " + RESULTS_FILE)
+    if not OPENAI_API_KEY and not ANTHROPIC_API_KEY:
+        log_message("no LLM API key set (OPENAI_API_KEY / ANTHROPIC_API_KEY) - every content change will be treated as meaningful")
 
     # Step 1: Load what we saw last time
     cache = load_cache()
@@ -251,10 +616,13 @@ def run_monitor():
     if not sites:
         log_message("no sites to monitor!")
         return
+    log_message(f"watchlist total: {len(sites)} sites")
 
     # Step 3: Check each site
     changes_found = []
     updated_cache = {}
+    checked_count = 0
+    skipped_count = 0
 
     for site in sites:
         site_name = site.get("name", "Unknown")
@@ -270,31 +638,101 @@ def run_monitor():
         content = fetch_site_content(url)
 
         if content is None:
+            skipped_count += 1
             log_message(f"skipping {site_name} (unreachable)")
             continue
 
+        checked_count += 1
+
         # Create a fingerprint of the content
         current_hash = create_content_hash(content)
-        previous_hash = cache.get(url)
+        previous_entry = cache.get(url) or {}
+        previous_hash = previous_entry.get("hash")
+        previous_content = previous_entry.get("content", "")
+        previous_listings = previous_entry.get("listings")
 
-        # Store this snapshot for next time
-        updated_cache[url] = current_hash
+        listings_enabled = bool(OPENAI_API_KEY or ANTHROPIC_API_KEY)
 
-        # Did it change?
         if previous_hash is None:
+            # First time monitoring this site: establish a baseline, no alert.
             log_message(f"{site_name}: first time monitoring")
-        elif current_hash != previous_hash:
-            log_message(f"CHANGE DETECTED: {site_name}!")
+            current_listings = extract_listings(site_name, content) if listings_enabled else None
+            updated_cache[url] = {"hash": current_hash, "content": content, "listings": current_listings}
+
+        elif current_hash == previous_hash:
+            # Byte-identical to last time: nothing changed, no need to re-extract.
+            log_message(f"{site_name}: no change")
+            updated_cache[url] = {"hash": current_hash, "content": content, "listings": previous_listings}
+
+        elif listings_enabled and previous_listings is not None:
+            # Page changed AND we have a previous listing set to compare against:
+            # extract listings from the new content and alert only on genuinely
+            # new listings, not on any byte-level change (login walls, cookie
+            # banners, ad rotation, and redirects no longer count as "changes").
+            current_listings = extract_listings(site_name, content)
+            updated_cache[url] = {"hash": current_hash, "content": content, "listings": current_listings}
+
+            if current_listings is None:
+                # Extraction failed - fall back to whole-page classification for this run only.
+                diff = build_diff(previous_content, content)
+                meaningful, summary = classify_change(site_name, previous_content, content)
+            else:
+                previous_normalized = {normalize_listing(l) for l in previous_listings}
+                new_listings = [l for l in current_listings if normalize_listing(l) not in previous_normalized]
+                diff = build_diff(previous_content, content)
+
+                if new_listings:
+                    meaningful = True
+                    summary = "New listing(s) found: " + "; ".join(new_listings[:5])
+                    if len(new_listings) > 5:
+                        summary += f" (+{len(new_listings) - 5} more)"
+                else:
+                    meaningful = False
+                    summary = "Page content changed but no new listings were detected (likely layout, cosmetic, or a login/redirect page)."
+
+            if meaningful:
+                log_message(f"CHANGE DETECTED (meaningful): {site_name} - {summary}")
+            else:
+                log_message(f"CHANGE DETECTED (not meaningful, skipping webhook): {site_name} - {summary}")
+
             changes_found.append({
                 "name": site_name,
                 "url": url,
                 "old_hash": previous_hash,
-                "new_hash": current_hash
+                "new_hash": current_hash,
+                "meaningful": meaningful,
+                "summary": summary,
+                "diff": diff,
             })
-            # Send webhook immediately
-            send_webhook(site_name, url, "Content has changed - check for new opportunities")
+
+            if meaningful:
+                send_webhook(site_name, url, summary, diff, previous_hash, current_hash)
+
         else:
-            log_message(f"{site_name}: no change")
+            # No LLM key configured (or no baseline listings yet): fall back to
+            # the whole-page diff + classify-or-always-meaningful behavior.
+            diff = build_diff(previous_content, content)
+            meaningful, summary = classify_change(site_name, previous_content, content)
+            current_listings = extract_listings(site_name, content) if listings_enabled else None
+            updated_cache[url] = {"hash": current_hash, "content": content, "listings": current_listings}
+
+            if meaningful:
+                log_message(f"CHANGE DETECTED (meaningful): {site_name} - {summary}")
+            else:
+                log_message(f"CHANGE DETECTED (not meaningful, skipping webhook): {site_name} - {summary}")
+
+            changes_found.append({
+                "name": site_name,
+                "url": url,
+                "old_hash": previous_hash,
+                "new_hash": current_hash,
+                "meaningful": meaningful,
+                "summary": summary,
+                "diff": diff,
+            })
+
+            if meaningful:
+                send_webhook(site_name, url, summary, diff, previous_hash, current_hash)
 
     # Step 4: Save the cache for next run
     save_cache(updated_cache)
@@ -303,8 +741,13 @@ def run_monitor():
     record_results(changes_found)
 
     # Step 6: Summary
+    meaningful_count = sum(1 for c in changes_found if c["meaningful"])
     log_message("=" * 60)
-    log_message(f"monitor complete. {len(changes_found)} change(s) detected.")
+    log_message(
+        f"monitor complete. watchlist={len(sites)} checked={checked_count} "
+        f"skipped={skipped_count} changes={len(changes_found)} "
+        f"meaningful={meaningful_count}"
+    )
     log_message("=" * 60)
 
 
