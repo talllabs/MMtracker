@@ -22,6 +22,7 @@ export function cleanProgram(p) {
   return {
     id: str(p.id, 60) || cryptoId(),
     name: str(p.name, 80) || "Unnamed program",
+    owner: str(p.owner, 40),
     kind: KINDS.includes(p.kind) ? p.kind : "other",
     balance: num(p.balance),
     unit: str(p.unit, 20) || "points",

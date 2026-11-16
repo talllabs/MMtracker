@@ -267,6 +267,9 @@
     <label for="f_name">Program</label>
     <input class="field" id="f_name" required placeholder="e.g. Delta SkyMiles">
 
+    <label for="f_owner">Whose account</label>
+    <input class="field" id="f_owner" placeholder="e.g. Ally">
+
     <label for="f_balance">Balance</label>
     <div class="row2">
       <input class="field num" id="f_balance" inputmode="numeric" placeholder="0">
@@ -380,7 +383,7 @@ function render() {
   } else {
     const order = ["airline", "hotel", "card", "other"];
     list.innerHTML = order.map((kind) => {
-      const group = items.filter((p) => p.kind === kind).sort((a, b) => (b.balance || 0) - (a.balance || 0));
+      const group = items.filter((p) => p.kind === kind).sort((a, b) => (a.owner || "").localeCompare(b.owner || "") || (b.balance || 0) - (a.balance || 0));
       if (!group.length) return "";
       return `<div class="group-title">${KIND_LABEL[kind]}</div>` + group.map(cardHtml).join("");
     }).join("");
@@ -396,7 +399,7 @@ function cardHtml(p) {
   const conf = p.source === "paste" && p.confidence && p.confidence !== "high"
     ? `<span class="pill conf-${p.confidence}">${p.confidence === "low" ? "Double-check" : "Probably right"}</span>` : "";
   const when = p.updatedAt ? `${ago(p.updatedAt)} · ${sourceLabel[p.source] || "updated"}` : "";
-  const tierBits = [p.tier, p.memberLast4 ? `•••${p.memberLast4}` : null].filter(Boolean).join(" · ");
+  const tierBits = [p.owner, p.tier, p.memberLast4 ? `•••${p.memberLast4}` : null].filter(Boolean).join(" · ");
   return `
     <button class="card" data-id="${esc(p.id)}">
       <div class="card-top">
@@ -522,7 +525,7 @@ function showReview(warnings) {
         <label class="change ${c.on ? "" : "off"}" data-i="${i}">
           <input type="checkbox" ${c.on ? "checked" : ""} data-i="${i}">
           <div class="change-body">
-            <div class="change-title"><span>${esc(old ? old.name : c.name)}</span>${old ? "" : `<span class="tag-new">NEW</span>`}</div>
+            <div class="change-title"><span>${esc(old ? old.name : c.name)}${(old ? old.owner : c.owner) ? ` · ${esc(old ? old.owner : c.owner)}` : ""}</span>${old ? "" : `<span class="tag-new">NEW</span>`}</div>
             <div class="delta num">
               ${old && old.balance !== null && diff !== 0 ? `<span class="old">${fmt(old.balance)}</span>` : ""}
               ${c.balance === null ? "<span style='font-size:16px;color:var(--muted)'>No balance found</span>" : `${fmt(c.balance)} <small style="font-size:14px;font-weight:500;color:var(--muted)">${esc(c.unit)}</small>`}
@@ -581,10 +584,12 @@ $("#applyBtn").addEventListener("click", async () => {
       if (c.tier) existing.tier = c.tier;
       if (c.expires) existing.expires = c.expires;
       if (c.memberLast4) existing.memberLast4 = c.memberLast4;
-      names.push(existing.name);
+      if (c.owner && !existing.owner) existing.owner = c.owner;
+      if (c.notes) existing.notes = c.notes;
+      names.push(existing.owner ? `${existing.name} (${existing.owner})` : existing.name);
     } else {
-      programs.push({ id: "", name: c.name, kind: c.kind, tier: c.tier, expires: c.expires, memberLast4: c.memberLast4, ...fields });
-      names.push(c.name);
+      programs.push({ id: "", name: c.name, owner: c.owner, notes: c.notes, kind: c.kind, tier: c.tier, expires: c.expires, memberLast4: c.memberLast4, ...fields });
+      names.push(c.owner ? `${c.name} (${c.owner})` : c.name);
     }
   }
   const btn = $("#applyBtn");
@@ -612,6 +617,7 @@ function openEdit(id) {
   const p = state.programs.find((x) => x.id === id) || { kind: filter in KIND_LABEL ? filter : "airline", unit: "points" };
   $("#editTitle").textContent = id ? "Edit program" : "Add program";
   $("#f_name").value = p.name || "";
+  $("#f_owner").value = p.owner || "";
   $("#f_balance").value = p.balance ?? "";
   $("#f_unit").value = ["points", "miles", "nights", "dollars"].includes(p.unit) ? p.unit : "points";
   $("#f_kind").value = p.kind || "other";
@@ -646,6 +652,7 @@ $("#editForm").addEventListener("submit", async (e) => {
 
   const fields = {
     name: $("#f_name").value.trim(),
+    owner: $("#f_owner").value.trim() || null,
     kind: $("#f_kind").value,
     unit: $("#f_unit").value,
     tier: $("#f_tier").value.trim() || null,
