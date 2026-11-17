@@ -326,7 +326,7 @@
     <input class="field" id="f_name" required placeholder="e.g. Delta SkyMiles">
 
     <label for="f_owner">Whose account</label>
-    <input class="field" id="f_owner" placeholder="e.g. Ally">
+    <input class="field" id="f_owner" placeholder="e.g. Ally, or Brad & Ally if shared">
 
     <label for="f_balance">Balance</label>
     <div class="row2">
@@ -1173,10 +1173,13 @@ try {
 const programBrand = (p) => (brandFor(p.name) || {}).name || p.name;
 const bookingBrand = (b) => (brandFor(b.provider, b.title) || {}).name || b.provider;
 const ownerKey = (o) => (o || "").trim().toLowerCase();
+// "Brad & Ally", "Brad and Ally", "Brad, Ally" → shared account: shows under each person.
+const ownerList = (o) => (o || "").split(/\s*(?:&|,|\/|\+|\band\b)\s*/i).map((x) => x.trim()).filter(Boolean);
 
 function passesFilters(owner, brand) {
-  if (personFilter === "none" && ownerKey(owner)) return false;
-  if (personFilter !== "all" && personFilter !== "none" && ownerKey(owner) !== personFilter) return false;
+  const people = ownerList(owner).map(ownerKey);
+  if (personFilter === "none" && people.length) return false;
+  if (personFilter !== "all" && personFilter !== "none" && !people.includes(personFilter)) return false;
   if (brandFilter !== "all" && brand !== brandFilter) return false;
   return true;
 }
@@ -1198,9 +1201,9 @@ function renderFilters() {
   ownerNames = {};
   let unnamed = false;
   items.forEach((x) => {
-    const k = ownerKey(x.owner);
-    if (k) ownerNames[k] ||= x.owner.trim();
-    else unnamed = true;
+    const names = ownerList(x.owner);
+    names.forEach((n) => { ownerNames[ownerKey(n)] ||= n; });
+    if (!names.length) unnamed = true;
   });
   const keys = Object.keys(ownerNames).sort();
   if (personFilter !== "all" && !(personFilter === "none" ? unnamed : keys.includes(personFilter))) personFilter = "all";
