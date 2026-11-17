@@ -173,6 +173,29 @@
   .toast.show { opacity: 1; transform: translateX(-50%); }
 
   .legend { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+
+  /* Points / Trips switch */
+  .seg { display: grid; grid-template-columns: 1fr 1fr; background: var(--surface-2); border-radius: 12px; padding: 3px; margin: 2px 0 12px; }
+  .seg button { border: 0; background: transparent; border-radius: 10px; padding: 9px 0; font-weight: 600; font-size: 15px; color: var(--muted); }
+  .seg button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+
+  /* Logos */
+  .logo { position: relative; flex: none; width: 40px; height: 40px; border-radius: 11px; background: var(--brand); display: grid; place-items: center; overflow: hidden; }
+  .logo b { color: #fff; font-size: 18px; font-weight: 700; }
+  .logo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #fff; padding: 6px; }
+  .card-head { display: flex; gap: 12px; align-items: center; justify-content: flex-start; text-align: left; width: 100%; }
+  .card-head > div { flex: 1; min-width: 0; }
+
+  /* Trip cards */
+  .tcard { cursor: pointer; }
+  .tcard.is-cancelled { opacity: .6; }
+  .tcard.is-cancelled .card-name { text-decoration: line-through; }
+  .when { font-size: 13px; font-weight: 600; color: var(--accent); white-space: nowrap; }
+  .trip-dates { font-size: 15px; margin-top: 10px; }
+  .conf { font-size: 14px; color: var(--muted); margin-top: 6px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .conf code { font: 600 15px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); background: var(--surface-2); padding: 3px 8px; border-radius: 8px; letter-spacing: .04em; }
+  .btn-chip { border: 0; background: transparent; color: var(--accent); font-weight: 600; font-size: 14px; padding: 6px 4px; }
+  .btn-cancel { display: block; text-align: center; text-decoration: none; margin-top: 12px; font-size: 15px; min-height: 44px; padding: 11px 14px; background: var(--surface-2); color: var(--text); }
 </style>
 </head>
 <body>
@@ -194,22 +217,37 @@
   <header>
     <div class="wrap">
       <div class="head-row">
-        <h1>Points</h1>
+        <h1>Wallet</h1>
         <button class="btn-quiet btn" id="logoutBtn">Lock</button>
       </div>
+      <div class="seg" role="tablist" aria-label="Section">
+        <button data-view="points" aria-pressed="true">⭐ Points</button>
+        <button data-view="trips" aria-pressed="false">🧳 Trips</button>
+      </div>
+      <div id="pointsHead">
       <div class="accuracy" id="accuracy"></div>
-      <div class="tabs" role="toolbar" aria-label="Filter">
+      <div class="tabs" id="pointTabs" role="toolbar" aria-label="Filter">
         <button class="tab" data-filter="all" aria-pressed="true">All</button>
         <button class="tab" data-filter="airline" aria-pressed="false">✈️ Airlines</button>
         <button class="tab" data-filter="hotel" aria-pressed="false">🏨 Hotels</button>
         <button class="tab" data-filter="card" aria-pressed="false">💳 Cards</button>
         <button class="tab" data-filter="needs" aria-pressed="false">Needs update</button>
       </div>
+      </div>
+      <div id="tripsHead" class="hidden">
+        <div class="accuracy" id="tripSummary"></div>
+        <div class="tabs" id="tripTabs" role="toolbar" aria-label="Trip filter">
+          <button class="tab" data-tfilter="upcoming" aria-pressed="true">Upcoming</button>
+          <button class="tab" data-tfilter="past" aria-pressed="false">Past</button>
+          <button class="tab" data-tfilter="cancelled" aria-pressed="false">Cancelled</button>
+        </div>
+      </div>
     </div>
   </header>
 
   <main class="wrap">
     <div id="list"></div>
+    <div id="tripList" class="hidden"></div>
     <section class="history hidden" id="historyWrap">
       <div class="group-title">Recent activity</div>
       <ul id="history"></ul>
@@ -235,7 +273,7 @@
   </div>
 
   <div id="pasteStep">
-    <p class="hint" style="margin-top:0">Copy everything from your airline, hotel or card account page (or an email/statement) and paste it here. It's fine if it's messy.</p>
+    <p class="hint" style="margin-top:0">Copy everything from an airline, hotel or card account page, a statement, or a booking confirmation email, and paste it here. It's fine if it's messy. Balances go to Points; flights, hotels and cars go to Trips.</p>
     <textarea class="field" id="pasteText" placeholder="e.g. MileagePlus  Miles balance 84,213  Premier Gold…" style="margin-top:12px"></textarea>
     <div class="actions">
       <button class="btn btn-primary btn-block" id="readBtn">Read this text</button>
@@ -247,6 +285,7 @@
     <p class="hint" style="margin-top:0">Here's what I found. Untick anything that looks wrong, then apply. Nothing is saved until you tap Apply.</p>
     <div id="warnings" style="margin-top:12px"></div>
     <div id="changes" style="margin-top:12px"></div>
+    <div id="bookingChanges"></div>
     <div class="actions">
       <button class="btn btn-primary btn-block" id="applyBtn">Apply</button>
       <button class="btn btn-block" id="backBtn">Back to text</button>
@@ -308,6 +347,53 @@
   </form>
 </div>
 
+<!-- ============ TRIP SHEET ============ -->
+<div class="sheet" id="tripSheet" role="dialog" aria-modal="true" aria-labelledby="tripTitle">
+  <div class="grabber"></div>
+  <form id="tripForm">
+    <div class="sheet-head">
+      <h2 id="tripTitle">Trip</h2>
+      <button class="btn btn-quiet" type="button" data-close>Cancel</button>
+    </div>
+    <div id="tripStatus"></div>
+
+    <div class="row2">
+      <div><label for="t_type">Type</label>
+        <select class="field" id="t_type"><option value="flight">✈️ Flight</option><option value="hotel">🏨 Hotel</option><option value="car">🚗 Car</option><option value="other">🎟️ Other</option></select></div>
+      <div><label for="t_owner">Who</label><input class="field" id="t_owner" placeholder="e.g. Ally"></div>
+    </div>
+    <label for="t_provider">Company</label>
+    <input class="field" id="t_provider" required placeholder="e.g. United, Marriott, Hertz">
+    <label for="t_title">Trip</label>
+    <input class="field" id="t_title" required placeholder="e.g. SFO → JFK, or hotel name">
+    <label for="t_location">Location</label>
+    <input class="field" id="t_location" placeholder="City or address">
+    <div class="row2">
+      <div><label for="t_startDate">Start / check-in</label><input class="field" id="t_startDate" type="date"></div>
+      <div><label for="t_endDate">End / check-out</label><input class="field" id="t_endDate" type="date"></div>
+    </div>
+    <div class="row2">
+      <div><label for="t_startTime">Time</label><input class="field" id="t_startTime" placeholder="7:15 AM"></div>
+      <div><label for="t_confirmation">Confirmation</label><input class="field" id="t_confirmation" autocapitalize="characters" placeholder="ABC123"></div>
+    </div>
+    <div class="row2">
+      <div><label for="t_cancelBy">Free cancel by</label><input class="field" id="t_cancelBy" type="date"></div>
+      <div><label for="t_price">Price</label><input class="field" id="t_price" placeholder="$412"></div>
+    </div>
+    <label for="t_cancelUrl">Cancel / manage link</label>
+    <input class="field" id="t_cancelUrl" type="url" inputmode="url" placeholder="https://… (optional)">
+    <p class="hint">Leave blank and the button opens the company's “My trips” page.</p>
+    <label for="t_notes">Notes</label>
+    <textarea class="field" id="t_notes" style="min-height:70px"></textarea>
+
+    <div class="actions">
+      <button class="btn btn-primary btn-block" type="submit">Save</button>
+      <button class="btn btn-block" type="button" id="tripCancelledBtn">✓ Mark as cancelled</button>
+      <button class="btn btn-danger btn-block" type="button" id="tripDeleteBtn">Delete trip</button>
+    </div>
+  </form>
+</div>
+
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
@@ -318,7 +404,7 @@
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => document.querySelectorAll(s);
 
-let state = { programs: [], activity: [], updatedAt: null };
+let state = { programs: [], bookings: [], activity: [], updatedAt: null };
 let filter = "all";
 let editingId = null;
 let pending = []; // suggestions waiting for review
@@ -371,6 +457,7 @@ const KIND_LABEL = { airline: "Airlines", hotel: "Hotels", card: "Credit cards",
 // ---------- Render ----------
 function render() {
   renderAccuracy();
+  renderTrips();
   const list = $("#list");
   let items = state.programs.slice();
   if (filter === "needs") items = items.filter((p) => freshness(p).key !== "fresh");
@@ -402,7 +489,8 @@ function cardHtml(p) {
   const tierBits = [p.owner, p.tier, p.memberLast4 ? `•••${p.memberLast4}` : null].filter(Boolean).join(" · ");
   return `
     <button class="card" data-id="${esc(p.id)}">
-      <div class="card-top">
+      <div class="card-head">
+        ${logoHtml(p.name)}
         <div style="min-width:0">
           <div class="card-name">${esc(p.name)}</div>
           ${tierBits ? `<div class="card-tier">${esc(tierBits)}</div>` : ""}
@@ -445,8 +533,8 @@ function renderAccuracy() {
 }
 
 // ---------- Saving ----------
-async function save(programs, note) {
-  state = await api("/api/data", { method: "PUT", body: JSON.stringify({ programs, activityNote: note }) });
+async function save(programs, note, bookings) {
+  state = await api("/api/data", { method: "PUT", body: JSON.stringify({ programs, bookings, activityNote: note }) });
   render();
 }
 
@@ -497,6 +585,7 @@ $("#readBtn").addEventListener("click", async () => {
   try {
     const result = await api("/api/parse", { method: "POST", body: JSON.stringify({ text }) });
     pending = result.changes.map((c) => ({ ...c, on: c.balance !== null || c.action === "add" }));
+    pendingBookings = (result.bookings || []).map((b) => ({ ...b, on: true }));
     showReview(result.warnings || []);
   } catch (e) {
     toast(e.message);
@@ -510,10 +599,11 @@ function showReview(warnings) {
   $("#pasteStep").classList.add("hidden");
   $("#reviewStep").classList.remove("hidden");
   $("#warnings").innerHTML = warnings.map((w) => `<div class="warn">⚠️ ${esc(w)}</div>`).join("");
+  $("#bookingChanges").innerHTML = bookingReviewHtml();
   if (!pending.length) {
-    $("#changes").innerHTML = `<div class="empty" style="padding:24px 0"><p>I couldn't find any balances in that text. Try copying more of the page.</p></div>`;
+    $("#changes").innerHTML = pendingBookings.length ? "" : `<div class="empty" style="padding:24px 0"><p>I couldn't find any balances or bookings in that text. Try copying more of the page.</p></div>`;
   } else {
-    $("#changes").innerHTML = pending.map((c, i) => {
+    $("#changes").innerHTML = (pendingBookings.length ? `<div class="group-title">Points</div>` : "") + pending.map((c, i) => {
       const old = c.programId ? state.programs.find((p) => p.id === c.programId) : null;
       const diff = old && old.balance !== null && c.balance !== null ? c.balance - old.balance : null;
       const diffHtml = diff === null ? "" : diff === 0
@@ -525,7 +615,7 @@ function showReview(warnings) {
         <label class="change ${c.on ? "" : "off"}" data-i="${i}">
           <input type="checkbox" ${c.on ? "checked" : ""} data-i="${i}">
           <div class="change-body">
-            <div class="change-title"><span>${esc(old ? old.name : c.name)}${(old ? old.owner : c.owner) ? ` · ${esc(old ? old.owner : c.owner)}` : ""}</span>${old ? "" : `<span class="tag-new">NEW</span>`}</div>
+            <div class="change-title"><span style="display:flex;gap:10px;align-items:center">${logoHtml(old ? old.name : c.name)}${esc(old ? old.name : c.name)}${(old ? old.owner : c.owner) ? ` · ${esc(old ? old.owner : c.owner)}` : ""}</span>${old ? "" : `<span class="tag-new">NEW</span>`}</div>
             <div class="delta num">
               ${old && old.balance !== null && diff !== 0 ? `<span class="old">${fmt(old.balance)}</span>` : ""}
               ${c.balance === null ? "<span style='font-size:16px;color:var(--muted)'>No balance found</span>" : `${fmt(c.balance)} <small style="font-size:14px;font-weight:500;color:var(--muted)">${esc(c.unit)}</small>`}
@@ -551,8 +641,15 @@ $("#changes").addEventListener("change", (e) => {
   updateApplyBtn();
 });
 
+$("#bookingChanges").addEventListener("change", (e) => {
+  if (e.target.type !== "checkbox") return;
+  pendingBookings[Number(e.target.dataset.bi)].on = e.target.checked;
+  e.target.closest(".change").classList.toggle("off", !e.target.checked);
+  updateApplyBtn();
+});
+
 function updateApplyBtn() {
-  const n = pending.filter((c) => c.on).length;
+  const n = pending.filter((c) => c.on).length + pendingBookings.filter((b) => b.on).length;
   $("#applyBtn").disabled = n === 0;
   $("#applyBtn").textContent = n ? `Apply ${n} change${n > 1 ? "s" : ""}` : "Nothing selected";
 }
@@ -595,10 +692,13 @@ $("#applyBtn").addEventListener("click", async () => {
   const btn = $("#applyBtn");
   btn.disabled = true;
   try {
-    await save(programs, `Updated from paste: ${names.join(", ")}`);
+    const { bookings, titles } = mergeBookings(pendingBookings.filter((b) => b.on));
+    const all = [...names, ...titles];
+    await save(programs, `Updated from paste: ${all.join(", ")}`, bookings);
     $("#pasteText").value = "";
     closeSheets();
-    toast(`Saved ${chosen.length} update${chosen.length > 1 ? "s" : ""} ✓`);
+    toast(`Saved ${all.length} update${all.length > 1 ? "s" : ""} ✓`);
+    if (titles.length && !names.length) setView("trips");
   } catch (e) {
     toast(e.message);
     btn.disabled = false;
@@ -606,7 +706,7 @@ $("#applyBtn").addEventListener("click", async () => {
 });
 
 // ---------- Manual add / edit ----------
-$("#openAdd").addEventListener("click", () => openEdit(null));
+$("#openAdd").addEventListener("click", () => (view === "trips" ? openTrip(null) : openEdit(null)));
 $("#list").addEventListener("click", (e) => {
   const card = e.target.closest(".card");
   if (card) openEdit(card.dataset.id);
@@ -700,11 +800,343 @@ $("#deleteBtn").addEventListener("click", async () => {
 });
 
 // ---------- Filters ----------
-$$(".tab").forEach((t) => t.addEventListener("click", () => {
+$$("#pointTabs .tab").forEach((t) => t.addEventListener("click", () => {
   filter = t.dataset.filter;
-  $$(".tab").forEach((x) => x.setAttribute("aria-pressed", String(x === t)));
+  $$("#pointTabs .tab").forEach((x) => x.setAttribute("aria-pressed", String(x === t)));
   render();
 }));
+
+// ---------- Brands & logos ----------
+// Logos come from Google's public favicon service (it only sees the company's
+// web address, never your data). If a logo can't load, a colored initial shows.
+const BRANDS = [
+  // Cards first so "American Express" isn't mistaken for American Airlines.
+  { re: /american express|amex|membership rewards/i, name: "American Express", domain: "americanexpress.com", color: "#006fcf" },
+  { re: /chase|ultimate rewards|sapphire/i, name: "Chase", domain: "chase.com", color: "#117aca" },
+  { re: /\bciti|thankyou/i, name: "Citi", domain: "citi.com", color: "#056dae" },
+  { re: /capital one|venture x?/i, name: "Capital One", domain: "capitalone.com", color: "#004879" },
+  { re: /\bbilt/i, name: "Bilt", domain: "biltrewards.com", color: "#111111" },
+  { re: /wells fargo/i, name: "Wells Fargo", domain: "wellsfargo.com", color: "#d71e28" },
+  { re: /bank of america/i, name: "Bank of America", domain: "bankofamerica.com", color: "#012169" },
+  { re: /discover/i, name: "Discover", domain: "discover.com", color: "#ff6000" },
+  // Airlines
+  { re: /united|mileageplus|\bua\b/i, name: "United", domain: "united.com", color: "#005daa", manage: "https://www.united.com/en/us/manageres/mytrips" },
+  { re: /delta|skymiles|\bdl\b/i, name: "Delta", domain: "delta.com", color: "#c8102e", manage: "https://www.delta.com/mytrips/" },
+  { re: /american|aadvantage|\baa\b/i, name: "American", domain: "aa.com", color: "#0078d2", manage: "https://www.aa.com/reservation/view/find-your-trip" },
+  { re: /jetblue|trueblue|\bb6\b/i, name: "JetBlue", domain: "jetblue.com", color: "#003876", manage: "https://www.jetblue.com/manage-trips" },
+  { re: /southwest|rapid rewards|\bwn\b/i, name: "Southwest", domain: "southwest.com", color: "#304cb2", manage: "https://www.southwest.com/air/manage-reservation/" },
+  { re: /alaska|mileage plan|atmos/i, name: "Alaska", domain: "alaskaair.com", color: "#01426a" },
+  { re: /hawaiian/i, name: "Hawaiian", domain: "hawaiianairlines.com", color: "#413691" },
+  { re: /spirit/i, name: "Spirit", domain: "spirit.com", color: "#b8a200" },
+  { re: /frontier/i, name: "Frontier", domain: "flyfrontier.com", color: "#00704a" },
+  { re: /air canada|aeroplan/i, name: "Air Canada", domain: "aircanada.com", color: "#d22630" },
+  { re: /british airways|avios/i, name: "British Airways", domain: "britishairways.com", color: "#075aaa" },
+  { re: /air france|klm|flying blue/i, name: "Air France–KLM", domain: "airfrance.com", color: "#002157" },
+  { re: /lufthansa|miles ?& ?more/i, name: "Lufthansa", domain: "lufthansa.com", color: "#05164d" },
+  { re: /emirates|skywards/i, name: "Emirates", domain: "emirates.com", color: "#d71921" },
+  { re: /qatar/i, name: "Qatar Airways", domain: "qatarairways.com", color: "#5c0632" },
+  { re: /singapore|krisflyer/i, name: "Singapore Airlines", domain: "singaporeair.com", color: "#f99f1c" },
+  { re: /virgin atlantic|flying club/i, name: "Virgin Atlantic", domain: "virginatlantic.com", color: "#e10a0a" },
+  { re: /turkish|miles ?& ?smiles/i, name: "Turkish Airlines", domain: "turkishairlines.com", color: "#c70a0c" },
+  // Hotels
+  { re: /marriott|bonvoy|westin|sheraton|ritz|st\. regis|w hotel|courtyard/i, name: "Marriott", domain: "marriott.com", color: "#a4123f", manage: "https://www.marriott.com/reservation/lookupReservation.mi" },
+  { re: /hilton|hampton|conrad|waldorf|doubletree|embassy suites/i, name: "Hilton", domain: "hilton.com", color: "#104c97", manage: "https://www.hilton.com/en/book/reservation/find/" },
+  { re: /hyatt|andaz|park hyatt/i, name: "Hyatt", domain: "hyatt.com", color: "#1c4b82", manage: "https://www.hyatt.com/reservation/find" },
+  { re: /\bihg|intercontinental|holiday inn|kimpton|crowne plaza/i, name: "IHG", domain: "ihg.com", color: "#f28b00" },
+  { re: /wyndham/i, name: "Wyndham", domain: "wyndhamhotels.com", color: "#0067b1" },
+  { re: /choice hotels|comfort inn|quality inn/i, name: "Choice", domain: "choicehotels.com", color: "#00467f" },
+  { re: /accor|sofitel|novotel|fairmont/i, name: "Accor", domain: "all.accor.com", color: "#1e1852" },
+  { re: /best western/i, name: "Best Western", domain: "bestwestern.com", color: "#003c7f" },
+  // Booking sites, cars, trains
+  { re: /airbnb/i, name: "Airbnb", domain: "airbnb.com", color: "#ff385c", manage: "https://www.airbnb.com/trips" },
+  { re: /booking\.com/i, name: "Booking.com", domain: "booking.com", color: "#003580", manage: "https://secure.booking.com/mytrips.html" },
+  { re: /expedia/i, name: "Expedia", domain: "expedia.com", color: "#191e3b", manage: "https://www.expedia.com/trips" },
+  { re: /hotels\.com/i, name: "Hotels.com", domain: "hotels.com", color: "#d32f2f", manage: "https://www.hotels.com/trips" },
+  { re: /vrbo/i, name: "Vrbo", domain: "vrbo.com", color: "#245abc", manage: "https://www.vrbo.com/trips" },
+  { re: /hertz/i, name: "Hertz", domain: "hertz.com", color: "#ffcc00" },
+  { re: /enterprise/i, name: "Enterprise", domain: "enterprise.com", color: "#169a5a" },
+  { re: /\bavis/i, name: "Avis", domain: "avis.com", color: "#d4002a" },
+  { re: /national car|nationalcar/i, name: "National", domain: "nationalcar.com", color: "#007a53" },
+  { re: /sixt/i, name: "Sixt", domain: "sixt.com", color: "#ff5f00" },
+  { re: /amtrak/i, name: "Amtrak", domain: "amtrak.com", color: "#00537e" },
+];
+
+function brandFor(...texts) {
+  const t = texts.filter(Boolean).join(" ");
+  return BRANDS.find((b) => b.re.test(t)) || null;
+}
+
+function hashColor(s) {
+  let h = 0;
+  for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) % 360;
+  return `hsl(${h} 45% 45%)`;
+}
+
+function logoHtml(...texts) {
+  const b = brandFor(...texts);
+  const label = (b ? b.name : texts.find(Boolean) || "?").replace(/[^A-Za-z0-9]/g, "");
+  const color = b ? b.color : hashColor(label);
+  const img = b
+    ? `<img src="https://www.google.com/s2/favicons?domain=${b.domain}&sz=128" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
+    : "";
+  return `<span class="logo" style="--brand:${color}" aria-hidden="true"><b>${esc(label.slice(0, 1).toUpperCase())}</b>${img}</span>`;
+}
+
+// ---------- Trips (bookings) ----------
+const TRIP_ICON = { flight: "✈️", hotel: "🏨", car: "🚗", other: "🎟️" };
+let view = "points";
+let tripFilter = "upcoming";
+let editingTripId = null;
+let pendingBookings = [];
+
+const todayStr = () => new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD, local time
+function daysUntil(ymd) {
+  if (!ymd) return null;
+  const [y, m, d] = ymd.split("-").map(Number);
+  const [ty, tm, td] = todayStr().split("-").map(Number);
+  return Math.round((Date.UTC(y, m - 1, d) - Date.UTC(ty, tm - 1, td)) / DAY);
+}
+function niceDate(ymd, withWeekday = true) {
+  if (!ymd) return "";
+  const [y, m, d] = ymd.split("-").map(Number);
+  const opts = { month: "short", day: "numeric", ...(withWeekday ? { weekday: "short" } : {}) };
+  if (y !== new Date().getFullYear()) opts.year = "numeric";
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, opts);
+}
+function whenText(n) {
+  if (n === null) return "";
+  if (n === 0) return "today";
+  if (n === 1) return "tomorrow";
+  if (n === -1) return "yesterday";
+  return n > 0 ? `in ${n} days` : `${-n} days ago`;
+}
+function isPast(b) {
+  const end = b.endDate || b.startDate;
+  return end ? daysUntil(end) < 0 : false;
+}
+function manageLink(b) {
+  if (b.cancelUrl) return b.cancelUrl;
+  const brand = brandFor(b.provider, b.title);
+  if (!brand) return null;
+  return brand.manage || `https://www.${brand.domain}/`;
+}
+function hostOf(url) {
+  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return ""; }
+}
+
+function cancelBadge(b) {
+  if (b.status === "cancelled") return `<span class="pill never">Cancelled</span>`;
+  if (!b.cancelBy) return "";
+  const n = daysUntil(b.cancelBy);
+  if (n < 0) return `<span class="pill never">Free cancellation ended ${niceDate(b.cancelBy, false)}</span>`;
+  const cls = n <= 3 ? "stale" : n <= 14 ? "aging" : "fresh";
+  return `<span class="pill ${cls}"><span class="dot"></span>Cancel free by ${niceDate(b.cancelBy, false)} · ${n === 0 ? "today" : `${n} day${n === 1 ? "" : "s"} left`}</span>`;
+}
+
+function tripCardHtml(b) {
+  const n = daysUntil(b.startDate);
+  const dates = b.startDate
+    ? `${niceDate(b.startDate)}${b.startTime ? ` · ${esc(b.startTime)}` : ""}${b.endDate && b.endDate !== b.startDate ? ` → ${niceDate(b.endDate)}` : ""}`
+    : "Date not set";
+  const link = b.status !== "cancelled" ? manageLink(b) : null;
+  const who = [b.provider, b.owner].filter(Boolean).join(" · ");
+  return `
+    <div class="card tcard ${b.status === "cancelled" ? "is-cancelled" : ""}" data-trip="${esc(b.id)}" role="button" tabindex="0">
+      <div class="card-head">
+        ${logoHtml(b.provider, b.title)}
+        <div style="min-width:0;flex:1">
+          <div class="card-tier">${TRIP_ICON[b.type] || ""} ${esc(who)}</div>
+          <div class="card-name">${esc(b.title)}</div>
+        </div>
+        ${n !== null && !isPast(b) && b.status !== "cancelled" ? `<span class="when">${whenText(n)}</span>` : ""}
+      </div>
+      <div class="trip-dates">${dates}${b.location ? ` · ${esc(b.location)}` : ""}</div>
+      ${b.confirmation ? `<div class="conf">Confirmation <code>${esc(b.confirmation)}</code><button class="btn-chip" data-copy="${esc(b.confirmation)}">Copy</button></div>` : ""}
+      <div class="meta" style="margin-top:8px">${cancelBadge(b)}${b.price ? `<span class="sub">${esc(b.price)}</span>` : ""}</div>
+      ${link ? `<a class="btn btn-cancel" href="${esc(link)}" target="_blank" rel="noopener noreferrer" data-cancel="${esc(b.id)}">Cancel or change on ${esc(hostOf(link))} ↗</a>` : ""}
+    </div>`;
+}
+
+function renderTrips() {
+  const all = state.bookings || [];
+  const upcoming = all.filter((b) => b.status !== "cancelled" && !isPast(b));
+  let items;
+  if (tripFilter === "upcoming") items = upcoming;
+  else if (tripFilter === "past") items = all.filter((b) => b.status !== "cancelled" && isPast(b));
+  else items = all.filter((b) => b.status === "cancelled");
+  items.sort((a, b) => (a.startDate || "9999").localeCompare(b.startDate || "9999") * (tripFilter === "past" ? -1 : 1));
+
+  // Summary card
+  const sum = $("#tripSummary");
+  if (!all.length) {
+    sum.innerHTML = `<div class="big-dot" style="background:var(--never)"></div><div><strong>No trips yet</strong><span>Paste a booking confirmation email to add one</span></div>`;
+  } else {
+    const next = upcoming.filter((b) => b.startDate).sort((a, b) => a.startDate.localeCompare(b.startDate))[0];
+    const deadlines = upcoming.filter((b) => b.cancelBy && daysUntil(b.cancelBy) >= 0).sort((a, b) => a.cancelBy.localeCompare(b.cancelBy));
+    const soon = deadlines[0];
+    const color = soon && daysUntil(soon.cancelBy) <= 3 ? "var(--stale)" : soon && daysUntil(soon.cancelBy) <= 14 ? "var(--aging)" : "var(--fresh)";
+    sum.innerHTML = `<div class="big-dot" style="background:${color}"></div><div style="min-width:0">
+      <strong>${upcoming.length} upcoming trip${upcoming.length === 1 ? "" : "s"}</strong>
+      <span>${next ? `Next: ${esc(next.title)}, ${whenText(daysUntil(next.startDate))}` : "No dates yet"}</span>
+      ${soon ? `<span style="display:block">Next cancel deadline: ${esc(soon.title)}, ${niceDate(soon.cancelBy, false)} (${whenText(daysUntil(soon.cancelBy))})</span>` : ""}
+    </div>`;
+  }
+
+  const list = $("#tripList");
+  if (!all.length) {
+    list.innerHTML = `<div class="empty"><h2>No trips yet</h2><p>Tap <b>Paste an update</b> and paste a flight, hotel or car confirmation email. I'll pull out the dates, confirmation code and cancel deadline.</p></div>`;
+  } else if (!items.length) {
+    list.innerHTML = `<div class="empty"><p>${tripFilter === "upcoming" ? "No upcoming trips." : tripFilter === "past" ? "No past trips." : "Nothing cancelled."}</p></div>`;
+  } else {
+    list.innerHTML = items.map(tripCardHtml).join("");
+  }
+}
+
+function setView(v) {
+  view = v;
+  $$(".seg button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.view === v)));
+  $("#pointsHead").classList.toggle("hidden", v !== "points");
+  $("#list").classList.toggle("hidden", v !== "points");
+  $("#tripsHead").classList.toggle("hidden", v !== "trips");
+  $("#tripList").classList.toggle("hidden", v !== "trips");
+  $("#openAdd").setAttribute("aria-label", v === "trips" ? "Add booking manually" : "Add program manually");
+  try { localStorage.setItem("pw-view", v); } catch {}
+  window.scrollTo(0, 0);
+}
+$$(".seg button").forEach((b) => b.addEventListener("click", () => setView(b.dataset.view)));
+try { if (localStorage.getItem("pw-view") === "trips") setView("trips"); } catch {}
+
+$$("#tripTabs .tab").forEach((t) => t.addEventListener("click", () => {
+  tripFilter = t.dataset.tfilter;
+  $$("#tripTabs .tab").forEach((x) => x.setAttribute("aria-pressed", String(x === t)));
+  renderTrips();
+}));
+
+$("#tripList").addEventListener("click", async (e) => {
+  const copy = e.target.closest("[data-copy]");
+  if (copy) {
+    e.stopPropagation();
+    try { await navigator.clipboard.writeText(copy.dataset.copy); toast("Confirmation code copied ✓"); }
+    catch { toast(copy.dataset.copy); }
+    return;
+  }
+  if (e.target.closest("[data-cancel]")) {
+    toast("Once it's cancelled, come back and tap the trip → Mark as cancelled");
+    return; // let the link open
+  }
+  const card = e.target.closest("[data-trip]");
+  if (card) openTrip(card.dataset.trip);
+});
+$("#tripList").addEventListener("keydown", (e) => {
+  const card = e.target.closest("[data-trip]");
+  if (card && (e.key === "Enter" || e.key === " ") && e.target === card) { e.preventDefault(); openTrip(card.dataset.trip); }
+});
+
+// ---------- Trip edit sheet ----------
+const TRIP_FIELDS = ["type", "provider", "owner", "title", "location", "startDate", "startTime", "endDate", "confirmation", "price", "cancelBy", "cancelUrl", "notes"];
+function openTrip(id) {
+  editingTripId = id;
+  const b = (state.bookings || []).find((x) => x.id === id) || { type: "flight" };
+  $("#tripTitle").textContent = id ? "Trip details" : "Add trip";
+  TRIP_FIELDS.forEach((f) => { $(`#t_${f}`).value = b[f] || ""; });
+  $("#tripCancelledBtn").classList.toggle("hidden", !id);
+  $("#tripCancelledBtn").textContent = b.status === "cancelled" ? "↩︎ Mark as not cancelled" : "✓ Mark as cancelled";
+  $("#tripDeleteBtn").classList.toggle("hidden", !id);
+  $("#tripStatus").innerHTML = id
+    ? `<div class="meta" style="margin-bottom:6px">${cancelBadge(b)}</div>` +
+      (b.cancelPolicy ? `<p class="hint">Cancellation rule: ${esc(b.cancelPolicy)}</p>` : "") +
+      (b.updatedAt ? `<p class="hint">Added/updated ${ago(b.updatedAt)}${b.source === "paste" ? " from paste" : ""}.</p>` : "") +
+      (b.evidence ? `<div class="quote">Source: “${esc(b.evidence)}”</div>` : "")
+    : "";
+  openSheet("#tripSheet");
+}
+
+async function saveTrips(bookings, note) {
+  state = await api("/api/data", { method: "PUT", body: JSON.stringify({ bookings, activityNote: note }) });
+  render();
+}
+
+$("#tripForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const fields = {};
+  TRIP_FIELDS.forEach((f) => { fields[f] = $(`#t_${f}`).value.trim() || null; });
+  if (fields.cancelUrl && !/^https:\/\//i.test(fields.cancelUrl)) return toast("The cancel link should start with https://");
+  const now = new Date().toISOString();
+  const bookings = (state.bookings || []).map((b) => ({ ...b }));
+  const old = bookings.find((b) => b.id === editingTripId);
+  if (old) Object.assign(old, fields, { updatedAt: now });
+  else bookings.push({ id: "", ...fields, status: "confirmed", updatedAt: now, source: "manual" });
+  try {
+    await saveTrips(bookings, `${old ? "Edited" : "Added"} trip: ${fields.title}`);
+    closeSheets();
+    toast("Saved ✓");
+  } catch (err) { toast(err.message); }
+});
+
+$("#tripCancelledBtn").addEventListener("click", async () => {
+  const bookings = (state.bookings || []).map((b) => ({ ...b }));
+  const b = bookings.find((x) => x.id === editingTripId);
+  b.status = b.status === "cancelled" ? "confirmed" : "cancelled";
+  b.updatedAt = new Date().toISOString();
+  try {
+    await saveTrips(bookings, `${b.status === "cancelled" ? "Cancelled" : "Restored"} trip: ${b.title}`);
+    closeSheets();
+    toast(b.status === "cancelled" ? "Marked as cancelled ✓" : "Restored ✓");
+  } catch (err) { toast(err.message); }
+});
+
+$("#tripDeleteBtn").addEventListener("click", async () => {
+  const b = (state.bookings || []).find((x) => x.id === editingTripId);
+  if (!confirm(`Delete ${b.title}? This can't be undone.`)) return;
+  try {
+    await saveTrips(state.bookings.filter((x) => x.id !== editingTripId), `Deleted trip: ${b.title}`);
+    closeSheets();
+    toast("Deleted");
+  } catch (err) { toast(err.message); }
+});
+
+// Review list for bookings found in pasted text.
+function bookingReviewHtml() {
+  if (!pendingBookings.length) return "";
+  return `<div class="group-title" style="margin-top:20px">Trips found</div>` + pendingBookings.map((b, i) => {
+    const old = b.bookingId ? (state.bookings || []).find((x) => x.id === b.bookingId) : null;
+    const confLabel = { high: "Confident", medium: "Probably right", low: "Double-check" }[b.confidence];
+    const confClass = { high: "fresh", medium: "conf-medium", low: "conf-low" }[b.confidence];
+    const dates = b.startDate ? `${niceDate(b.startDate)}${b.startTime ? ` · ${esc(b.startTime)}` : ""}${b.endDate && b.endDate !== b.startDate ? ` → ${niceDate(b.endDate)}` : ""}` : "No date found";
+    return `
+      <label class="change ${b.on ? "" : "off"}">
+        <input type="checkbox" ${b.on ? "checked" : ""} data-bi="${i}">
+        <div class="change-body">
+          <div class="change-title"><span style="display:flex;gap:10px;align-items:center;min-width:0">${logoHtml(b.provider, b.title)}<span style="min-width:0">${esc(b.title)}<span class="card-tier" style="display:block">${TRIP_ICON[b.type]} ${esc([b.provider, b.owner].filter(Boolean).join(" · "))}</span></span></span>${old ? `<span class="tag-new">UPDATE</span>` : `<span class="tag-new">NEW</span>`}</div>
+          <div class="trip-dates" style="margin-top:8px">${dates}</div>
+          ${b.confirmation ? `<div class="conf">Confirmation <code>${esc(b.confirmation)}</code></div>` : ""}
+          <span class="pill ${confClass}">${confLabel}</span>
+          ${b.status === "cancelled" ? `<span class="pill never">Cancelled</span>` : ""}
+          ${cancelBadge({ ...b, status: "confirmed" })}
+          ${b.cancelUrl ? `<div class="hint">Cancel link: ${esc(hostOf(b.cancelUrl))}</div>` : ""}
+          ${b.evidence ? `<div class="quote">“${esc(b.evidence)}”</div>` : ""}
+        </div>
+      </label>`;
+  }).join("");
+}
+
+function mergeBookings(chosen) {
+  const now = new Date().toISOString();
+  const bookings = (state.bookings || []).map((b) => ({ ...b }));
+  const titles = [];
+  for (const c of chosen) {
+    const sameCode = (b) => c.confirmation && b.confirmation && b.confirmation.toUpperCase() === c.confirmation.toUpperCase();
+    const existing = bookings.find((b) => b.id === c.bookingId) || bookings.find(sameCode);
+    const fields = {};
+    ["type", "provider", "owner", "title", "location", "startDate", "startTime", "endDate", "confirmation", "travelers", "price", "cancelBy", "cancelPolicy", "cancelUrl", "notes", "evidence", "confidence", "status"]
+      .forEach((f) => { if (c[f] !== null && c[f] !== undefined && c[f] !== "") fields[f] = c[f]; });
+    Object.assign(fields, { updatedAt: now, source: "paste" });
+    if (existing) Object.assign(existing, fields);
+    else bookings.push({ id: "", ...fields });
+    titles.push(c.title);
+  }
+  return { bookings, titles };
+}
 
 // ---------- Login / logout ----------
 function showLogin() {
@@ -737,7 +1169,7 @@ $("#loginForm").addEventListener("submit", async (e) => {
 
 $("#logoutBtn").addEventListener("click", async () => {
   await api("/api/login", { method: "DELETE" }).catch(() => {});
-  state = { programs: [], activity: [] };
+  state = { programs: [], bookings: [], activity: [] };
   showLogin();
 });
 

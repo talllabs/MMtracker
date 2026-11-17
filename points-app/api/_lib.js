@@ -86,7 +86,7 @@ async function redis(command) {
 }
 
 export function emptyData() {
-  return { programs: [], activity: [], updatedAt: null };
+  return { programs: [], bookings: [], activity: [], updatedAt: null };
 }
 
 export async function loadData() {
