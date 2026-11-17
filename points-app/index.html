@@ -182,7 +182,8 @@
   /* Logos */
   .logo { position: relative; flex: none; width: 40px; height: 40px; border-radius: 11px; background: var(--brand); display: grid; place-items: center; overflow: hidden; }
   .logo b { color: #fff; font-size: 18px; font-weight: 700; }
-  .logo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #fff; padding: 6px; }
+  .logo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #fff; padding: 6px; opacity: 0; transition: opacity .2s; }
+  .logo img.ok { opacity: 1; }
   .card-head { display: flex; gap: 12px; align-items: center; justify-content: flex-start; text-align: left; width: 100%; }
   .card-head > div { flex: 1; min-width: 0; }
 
@@ -196,6 +197,20 @@
   .conf code { font: 600 15px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); background: var(--surface-2); padding: 3px 8px; border-radius: 8px; letter-spacing: .04em; }
   .btn-chip { border: 0; background: transparent; color: var(--accent); font-weight: 600; font-size: 14px; padding: 6px 4px; }
   .btn-cancel { display: block; text-align: center; text-decoration: none; margin-top: 12px; font-size: 15px; min-height: 44px; padding: 11px 14px; background: var(--surface-2); color: var(--text); }
+
+  /* Person + company filters */
+  .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding-bottom: 12px; }
+  .filters .tabs { padding-bottom: 0; flex: 1 1 100%; min-width: 0; }
+  .filters .tabs:empty { display: none; }
+  .tab.person[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+  .select-sm { width: auto; max-width: 100%; flex: none; padding: 8px 30px 8px 12px; border-radius: 999px; font-size: 15px; font-weight: 500; background: var(--surface-2); border: 0;
+    appearance: none; -webkit-appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+    background-position: right 14px top 52%, right 9px top 52%; background-size: 5px 5px; background-repeat: no-repeat; }
+  .select-sm.active { background-color: var(--accent); color: var(--accent-ink);
+    background-image: linear-gradient(45deg, transparent 50%, var(--accent-ink) 50%), linear-gradient(135deg, var(--accent-ink) 50%, transparent 50%); }
+  .filter-note { font-size: 14px; color: var(--muted); margin: -4px 4px 10px; }
+  .filter-note button { border: 0; background: none; color: var(--accent); font-weight: 600; padding: 0 0 0 6px; font-size: 14px; }
 </style>
 </head>
 <body>
@@ -223,6 +238,10 @@
       <div class="seg" role="tablist" aria-label="Section">
         <button data-view="points" aria-pressed="true">⭐ Points</button>
         <button data-view="trips" aria-pressed="false">🧳 Trips</button>
+      </div>
+      <div class="filters" id="filters">
+        <div class="tabs" id="personTabs" role="toolbar" aria-label="Whose accounts"></div>
+        <select class="field select-sm" id="brandFilter" aria-label="Company"></select>
       </div>
       <div id="pointsHead">
       <div class="accuracy" id="accuracy"></div>
@@ -456,17 +475,19 @@ const KIND_LABEL = { airline: "Airlines", hotel: "Hotels", card: "Credit cards",
 
 // ---------- Render ----------
 function render() {
-  renderAccuracy();
+  renderFilters();
+  const visible = state.programs.filter((p) => passesFilters(p.owner, programBrand(p)));
+  renderAccuracy(visible);
   renderTrips();
   const list = $("#list");
-  let items = state.programs.slice();
+  let items = visible.slice();
   if (filter === "needs") items = items.filter((p) => freshness(p).key !== "fresh");
   else if (filter !== "all") items = items.filter((p) => p.kind === filter);
 
   if (!state.programs.length) {
     list.innerHTML = `<div class="empty"><h2>No programs yet</h2><p>Tap <b>Paste an update</b> and paste text from any airline, hotel or credit card account page. I'll pick out the balances for you.</p></div>`;
   } else if (!items.length) {
-    list.innerHTML = `<div class="empty"><p>${filter === "needs" ? "🎉 Everything is up to date." : "Nothing here yet."}</p></div>`;
+    list.innerHTML = `<div class="empty"><p>${filter === "needs" && visible.length ? "🎉 Everything is up to date." : `Nothing here${filterLabel()}.`}</p>${filtersOn() ? `<button class="btn btn-quiet" data-clear-filters>Show everything</button>` : ""}</div>`;
   } else {
     const order = ["airline", "hotel", "card", "other"];
     list.innerHTML = order.map((kind) => {
@@ -505,9 +526,8 @@ function cardHtml(p) {
     </button>`;
 }
 
-function renderAccuracy() {
+function renderAccuracy(ps = state.programs) {
   const el = $("#accuracy");
-  const ps = state.programs;
   if (!ps.length) {
     el.innerHTML = `<div class="big-dot" style="background:var(--never)"></div><div><strong>Nothing tracked yet</strong><span>Paste an account page to get started</span></div>`;
     return;
@@ -517,7 +537,7 @@ function renderAccuracy() {
   const needs = ps.length - counts.fresh;
   const oldest = ps.map((p) => ({ p, f: freshness(p) })).sort((a, b) => b.f.days - a.f.days)[0];
   const color = counts.stale || counts.never ? "var(--stale)" : counts.aging ? "var(--aging)" : "var(--fresh)";
-  const headline = needs === 0 ? `All ${ps.length} balances are up to date` : `${counts.fresh} of ${ps.length} up to date`;
+  const headline = needs === 0 ? (ps.length === 1 ? "This balance is up to date" : `All ${ps.length} balances are up to date`) : `${counts.fresh} of ${ps.length} up to date`;
   let detail = `Last change ${ago(state.updatedAt)}`;
   if (needs) {
     detail = oldest.f.days === Infinity
@@ -877,7 +897,7 @@ function logoHtml(...texts) {
   const label = (b ? b.name : texts.find(Boolean) || "?").replace(/[^A-Za-z0-9]/g, "");
   const color = b ? b.color : hashColor(label);
   const img = b
-    ? `<img src="https://www.google.com/s2/favicons?domain=${b.domain}&sz=128" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
+    ? `<img src="https://www.google.com/s2/favicons?domain=${b.domain}&sz=128" alt="" loading="lazy" referrerpolicy="no-referrer" onload="if(this.naturalWidth>16)this.classList.add('ok');else this.remove()" onerror="this.remove()">`
     : "";
   return `<span class="logo" style="--brand:${color}" aria-hidden="true"><b>${esc(label.slice(0, 1).toUpperCase())}</b>${img}</span>`;
 }
@@ -958,7 +978,8 @@ function tripCardHtml(b) {
 }
 
 function renderTrips() {
-  const all = state.bookings || [];
+  const everything = state.bookings || [];
+  const all = everything.filter((b) => passesFilters(b.owner, bookingBrand(b)));
   const upcoming = all.filter((b) => b.status !== "cancelled" && !isPast(b));
   let items;
   if (tripFilter === "upcoming") items = upcoming;
@@ -969,7 +990,9 @@ function renderTrips() {
   // Summary card
   const sum = $("#tripSummary");
   if (!all.length) {
-    sum.innerHTML = `<div class="big-dot" style="background:var(--never)"></div><div><strong>No trips yet</strong><span>Paste a booking confirmation email to add one</span></div>`;
+    sum.innerHTML = everything.length
+      ? `<div class="big-dot" style="background:var(--never)"></div><div><strong>No trips${filterLabel()}</strong><span>Change the filter above to see others</span></div>`
+      : `<div class="big-dot" style="background:var(--never)"></div><div><strong>No trips yet</strong><span>Paste a booking confirmation email to add one</span></div>`;
   } else {
     const next = upcoming.filter((b) => b.startDate).sort((a, b) => a.startDate.localeCompare(b.startDate))[0];
     const deadlines = upcoming.filter((b) => b.cancelBy && daysUntil(b.cancelBy) >= 0).sort((a, b) => a.cancelBy.localeCompare(b.cancelBy));
@@ -983,10 +1006,10 @@ function renderTrips() {
   }
 
   const list = $("#tripList");
-  if (!all.length) {
+  if (!everything.length) {
     list.innerHTML = `<div class="empty"><h2>No trips yet</h2><p>Tap <b>Paste an update</b> and paste a flight, hotel or car confirmation email. I'll pull out the dates, confirmation code and cancel deadline.</p></div>`;
   } else if (!items.length) {
-    list.innerHTML = `<div class="empty"><p>${tripFilter === "upcoming" ? "No upcoming trips." : tripFilter === "past" ? "No past trips." : "Nothing cancelled."}</p></div>`;
+    list.innerHTML = `<div class="empty"><p>${tripFilter === "upcoming" ? "No upcoming trips" : tripFilter === "past" ? "No past trips" : "Nothing cancelled"}${filterLabel()}.</p>${filtersOn() ? `<button class="btn btn-quiet" data-clear-filters>Show everything</button>` : ""}</div>`;
   } else {
     list.innerHTML = items.map(tripCardHtml).join("");
   }
@@ -1002,6 +1025,7 @@ function setView(v) {
   $("#openAdd").setAttribute("aria-label", v === "trips" ? "Add booking manually" : "Add program manually");
   try { localStorage.setItem("pw-view", v); } catch {}
   window.scrollTo(0, 0);
+  if (typeof render === "function" && state) render();
 }
 $$(".seg button").forEach((b) => b.addEventListener("click", () => setView(b.dataset.view)));
 try { if (localStorage.getItem("pw-view") === "trips") setView("trips"); } catch {}
@@ -1137,6 +1161,82 @@ function mergeBookings(chosen) {
   }
   return { bookings, titles };
 }
+
+// ---------- Person + company filters ----------
+let personFilter = "all";   // "all", a name (lowercase), or "none" (no name set)
+let brandFilter = "all";    // "all" or a company name
+try {
+  personFilter = localStorage.getItem("pw-person") || "all";
+  brandFilter = localStorage.getItem("pw-brand") || "all";
+} catch {}
+
+const programBrand = (p) => (brandFor(p.name) || {}).name || p.name;
+const bookingBrand = (b) => (brandFor(b.provider, b.title) || {}).name || b.provider;
+const ownerKey = (o) => (o || "").trim().toLowerCase();
+
+function passesFilters(owner, brand) {
+  if (personFilter === "none" && ownerKey(owner)) return false;
+  if (personFilter !== "all" && personFilter !== "none" && ownerKey(owner) !== personFilter) return false;
+  if (brandFilter !== "all" && brand !== brandFilter) return false;
+  return true;
+}
+const filtersOn = () => personFilter !== "all" || brandFilter !== "all";
+function filterLabel() {
+  const bits = [];
+  if (personFilter === "none") bits.push("without a name");
+  else if (personFilter !== "all") bits.push(`for ${personName(personFilter)}`);
+  if (brandFilter !== "all") bits.push(`at ${brandFilter}`);
+  return bits.length ? " " + bits.join(" ") : "";
+}
+
+let ownerNames = {};
+function personName(key) { return ownerNames[key] || key; }
+
+function renderFilters() {
+  // People: every name used on any program or trip.
+  const items = [...state.programs, ...(state.bookings || [])];
+  ownerNames = {};
+  let unnamed = false;
+  items.forEach((x) => {
+    const k = ownerKey(x.owner);
+    if (k) ownerNames[k] ||= x.owner.trim();
+    else unnamed = true;
+  });
+  const keys = Object.keys(ownerNames).sort();
+  if (personFilter !== "all" && !(personFilter === "none" ? unnamed : keys.includes(personFilter))) personFilter = "all";
+  const chips = [["all", "Everyone"], ...keys.map((k) => [k, ownerNames[k]]), ...(unnamed && keys.length ? [["none", "No name"]] : [])];
+  $("#personTabs").innerHTML = keys.length
+    ? chips.map(([k, label]) => `<button class="tab person" data-person="${esc(k)}" aria-pressed="${k === personFilter}">${k === "all" ? "👥 " : ""}${esc(label)}</button>`).join("")
+    : "";
+
+  // Companies: only ones in the current view.
+  const brands = [...new Set(view === "trips" ? (state.bookings || []).map(bookingBrand) : state.programs.map(programBrand))].sort();
+  if (brandFilter !== "all" && !brands.includes(brandFilter)) brandFilter = "all";
+  const sel = $("#brandFilter");
+  sel.innerHTML = `<option value="all">All companies</option>` + brands.map((b) => `<option ${b === brandFilter ? "selected" : ""}>${esc(b)}</option>`).join("");
+  sel.value = brandFilter;
+  sel.classList.toggle("active", brandFilter !== "all");
+  sel.classList.toggle("hidden", brands.length < 2);
+  $("#filters").classList.toggle("hidden", !keys.length && brands.length < 2);
+  try { localStorage.setItem("pw-person", personFilter); localStorage.setItem("pw-brand", brandFilter); } catch {}
+}
+
+$("#personTabs").addEventListener("click", (e) => {
+  const chip = e.target.closest("[data-person]");
+  if (!chip) return;
+  personFilter = chip.dataset.person;
+  render();
+});
+$("#brandFilter").addEventListener("change", (e) => {
+  brandFilter = e.target.value;
+  render();
+});
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("[data-clear-filters]")) return;
+  personFilter = "all";
+  brandFilter = "all";
+  render();
+});
 
 // ---------- Login / logout ----------
 function showLogin() {
