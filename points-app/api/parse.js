@@ -60,6 +60,8 @@ const SYSTEM = `You read raw text a person copied from airline, hotel and credit
 Rules:
 - Only report numbers that are actually in the text. Never guess or estimate a balance.
 - The text may list accounts for several people. The same program for two different people is two separate accounts: match on BOTH the program and the owner, and never merge different owners.
+- A business account (e.g. "AAdvantage Business", "Marriott Business") is a different account from a person's personal account in the same airline/hotel, even if that person's name appears on the business page. Never merge business and personal accounts; name business ones clearly, e.g. "AAdvantage Business – Meaningful Marketing".
+- If the user writes a note in the text saying an account is shared (e.g. "shared: Brad & Ally"), set owner to the names joined with " & ", e.g. "Brad & Ally". Notes the user adds to the pasted text describe how to file it; follow them.
 - Match to an existing program when it is clearly the same account (e.g. "MileagePlus" = "United MileagePlus", "Amex MR" = "American Express Membership Rewards"). Use action "update" with its programId. Otherwise use "add".
 - If the balance shown equals the existing balance, still include it (it confirms the number is current).
 - Pending, projected, or "points earned this trip" numbers are NOT the balance. Skip them or mention them in warnings.
