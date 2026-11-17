@@ -42,6 +42,53 @@ export function cleanProgram(p) {
   };
 }
 
+export const BOOKING_TYPES = ["flight", "hotel", "car", "other"];
+
+function dateOnly(v) {
+  const s = str(v, 10);
+  return s && /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+}
+
+function httpsUrl(v) {
+  const s = str(v, 1000);
+  try {
+    return s && new URL(s).protocol === "https:" ? s : null;
+  } catch {
+    return null;
+  }
+}
+
+export function cleanBooking(b) {
+  return {
+    id: str(b.id, 60) || cryptoId().replace("p_", "b_"),
+    type: BOOKING_TYPES.includes(b.type) ? b.type : "other",
+    provider: str(b.provider, 60) || "Unknown",
+    owner: str(b.owner, 40),
+    title: str(b.title, 120) || "Booking",
+    location: str(b.location, 160),
+    startDate: dateOnly(b.startDate),
+    startTime: str(b.startTime, 20),
+    endDate: dateOnly(b.endDate),
+    confirmation: str(b.confirmation, 40),
+    travelers: str(b.travelers, 200),
+    price: str(b.price, 40),
+    cancelBy: dateOnly(b.cancelBy),
+    cancelPolicy: str(b.cancelPolicy, 300),
+    cancelUrl: httpsUrl(b.cancelUrl),
+    status: b.status === "cancelled" ? "cancelled" : "confirmed",
+    notes: str(b.notes, 500),
+    evidence: str(b.evidence, 300),
+    confidence: ["high", "medium", "low"].includes(b.confidence) ? b.confidence : null,
+    updatedAt: isoDate(b.updatedAt),
+    source: str(b.source, 20),
+  };
+}
+
+export function cleanBookings(list) {
+  if (!Array.isArray(list)) throw new Error("bookings must be a list");
+  return list.slice(0, 300).map(cleanBooking);
+}
+
 export function cleanPrograms(list) {
   if (!Array.isArray(list)) throw new Error("programs must be a list");
   return list.slice(0, 200).map(cleanProgram);

@@ -26,12 +26,36 @@ const Change = z.object({
   reason: z.string().describe("One short sentence explaining the change, for a non-technical reader"),
 });
 
+const Booking = z.object({
+  action: z.enum(["update", "add"]),
+  bookingId: z.string().nullable().describe("id of the existing booking for 'update' (same confirmation code / same trip), null for 'add'"),
+  type: z.enum(["flight", "hotel", "car", "other"]),
+  provider: z.string().describe("Company, e.g. 'United', 'Marriott', 'Hertz', 'Airbnb'"),
+  owner: z.string().nullable().describe("Traveler / whose booking, first name, if stated"),
+  title: z.string().describe("Short label: for flights 'SFO → JFK' (add flight number if known, e.g. 'UA 1234 SFO → JFK'); for hotels the hotel name"),
+  location: z.string().nullable().describe("City or address for hotels/cars, else null"),
+  startDate: z.string().nullable().describe("Departure / check-in date as YYYY-MM-DD"),
+  startTime: z.string().nullable().describe("Departure / check-in time as written, e.g. '7:15 AM'"),
+  endDate: z.string().nullable().describe("Return / check-out date as YYYY-MM-DD"),
+  confirmation: z.string().nullable().describe("Confirmation / record locator code exactly as written"),
+  travelers: z.string().nullable().describe("Names of travelers if listed"),
+  price: z.string().nullable().describe("Total price as written, e.g. '$412.30' or '25,000 miles'"),
+  cancelBy: z.string().nullable().describe("Last date to cancel for free/refund as YYYY-MM-DD, only if the text states it"),
+  cancelPolicy: z.string().nullable().describe("Short summary of the cancellation rule if stated"),
+  cancelUrl: z.string().nullable().describe("A manage/cancel/view-reservation link that appears in the text (must start with https://), else null. Never invent a link."),
+  status: z.enum(["confirmed", "cancelled"]),
+  notes: z.string().nullable(),
+  evidence: z.string().describe("Short exact quote from the text identifying this booking"),
+  confidence: z.enum(["high", "medium", "low"]),
+});
+
 const Result = z.object({
   changes: z.array(Change),
+  bookings: z.array(Booking).describe("Flights, hotel stays, car rentals and other reservations found in the text"),
   warnings: z.array(z.string()).describe("Anything ambiguous the user should double-check"),
 });
 
-const SYSTEM = `You read raw text a person copied from airline, hotel and credit card websites, apps, emails or statements, and turn it into balance updates for their personal points tracker.
+const SYSTEM = `You read raw text a person copied from airline, hotel and credit card websites, apps, emails or statements, and turn it into (1) points balance updates and (2) travel bookings for their personal tracker.
 
 Rules:
 - Only report numbers that are actually in the text. Never guess or estimate a balance.
@@ -41,7 +65,9 @@ Rules:
 - Pending, projected, or "points earned this trip" numbers are NOT the balance. Skip them or mention them in warnings.
 - confidence: "high" when the text clearly labels the number as the current balance for that program; "medium" when labelling is a little unclear; "low" when you had to infer which program or which number.
 - Never output full account numbers, only the last 4 characters.
-- If nothing usable is in the text, return an empty changes list and explain in warnings.`;
+- Bookings: list each flight itinerary, hotel stay, car rental or other reservation once. A round trip on one confirmation is ONE booking. Match an existing booking by confirmation code (use "update" with its bookingId). If the text says a booking was cancelled, set status "cancelled".
+- Only put a cancelUrl if that exact https link is in the text. Only put cancelBy if a deadline is stated.
+- If nothing usable is in the text, return empty lists and explain in warnings.`;
 
 export default async function handler(req, res) {
   if (!requireLogin(req, res)) return;
@@ -59,9 +85,13 @@ export default async function handler(req, res) {
     const existing = data.programs.map((p) => ({
       id: p.id, owner: p.owner, name: p.name, kind: p.kind, balance: p.balance, unit: p.unit, tier: p.tier,
     }));
+    const existingBookings = (data.bookings || []).map((b) => ({
+      id: b.id, type: b.type, provider: b.provider, title: b.title, startDate: b.startDate, confirmation: b.confirmation, owner: b.owner,
+    }));
     const userContent =
       `Today is ${new Date().toISOString().slice(0, 10)}.\n\n` +
       `My existing programs:\n${JSON.stringify(existing, null, 2)}\n\n` +
+      `My existing bookings:\n${JSON.stringify(existingBookings, null, 2)}\n\n` +
       `Pasted text:\n<pasted>\n${text}\n</pasted>`;
 
     // Uses Claude if ANTHROPIC_API_KEY is set, otherwise OpenAI.
@@ -76,7 +106,14 @@ export default async function handler(req, res) {
       c.action === "update" && !ids.has(c.programId) ? { ...c, action: "add", programId: null } : c,
     );
 
-    res.status(200).json({ changes, warnings: result.output.warnings });
+    const bookingIds = new Set((data.bookings || []).map((b) => b.id));
+    const bookings = result.output.bookings.map((b) => ({
+      ...b,
+      ...(b.action === "update" && !bookingIds.has(b.bookingId) ? { action: "add", bookingId: null } : {}),
+      cancelUrl: b.cancelUrl && /^https:\/\//i.test(b.cancelUrl) && text.includes(b.cancelUrl) ? b.cancelUrl : null,
+    }));
+
+    res.status(200).json({ changes, bookings, warnings: result.output.warnings });
   } catch (err) {
     if (err instanceof Anthropic.RateLimitError) {
       return res.status(429).json({ error: "Too many requests to the AI right now. Wait a minute and try again." });

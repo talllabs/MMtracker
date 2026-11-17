@@ -9,6 +9,13 @@ A private, phone-friendly tracker for your airline miles, hotel points and credi
   - 🔴 **Out of date**: more than 30 days
   - The top of the screen tells you how many are current and which one is oldest.
   - Paste updates also show how sure the AI was ("Confident", "Probably right", "Double-check") and the exact words it read the number from.
+- **Trips tab.** Paste a flight, hotel or car confirmation email and the booking shows up under 🧳 Trips. Each trip shows:
+  - the dates and the confirmation code, with a Copy button
+  - the free-cancellation deadline and how many days are left (red when 3 days or fewer)
+  - a **Cancel or change on …** button. It opens the link from your email if there was one, otherwise the company's "My trips" page.
+
+  After cancelling, tap the trip and choose **Mark as cancelled**.
+- **Logos** for airlines, hotels, cards and booking sites. They're loaded from Google's public favicon service, which only sees the company's web address. A colored initial shows if a logo can't load.
 - **Easy edits.** Tap any card to change it, or tap **✓ Balance is still correct** to mark it as checked today.
 - **Password protected.** Nothing loads until you enter your password.
 
