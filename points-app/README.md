@@ -16,6 +16,7 @@ A private, phone-friendly tracker for your airline miles, hotel points and credi
 
   After cancelling, tap the trip and choose **Mark as cancelled**.
 - **Logos** for airlines, hotels, cards and booking sites. They're loaded from Google's public favicon service, which only sees the company's web address. A colored initial shows if a logo can't load.
+- **Filters.** Tap a person (👥 Everyone · Ally · Brad…) and/or pick one company from the drop-down. This works on both Points and Trips, the summary card updates to match, and the app remembers your choice.
 - **Easy edits.** Tap any card to change it, or tap **✓ Balance is still correct** to mark it as checked today.
 - **Password protected.** Nothing loads until you enter your password.
 
