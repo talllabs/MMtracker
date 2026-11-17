@@ -62,6 +62,7 @@ Rules:
 - The text may list accounts for several people. The same program for two different people is two separate accounts: match on BOTH the program and the owner, and never merge different owners.
 - A business account (e.g. "AAdvantage Business", "Marriott Business") is a different account from a person's personal account in the same airline/hotel, even if that person's name appears on the business page. Never merge business and personal accounts; name business ones clearly, e.g. "AAdvantage Business – Meaningful Marketing".
 - If the user writes a note in the text saying an account is shared (e.g. "shared: Brad & Ally"), set owner to the names joined with " & ", e.g. "Brad & Ally". Notes the user adds to the pasted text describe how to file it; follow them.
+- Before using "update", check that the owner, the account type (business vs personal) and the account number (if both are known) all match the existing program. If any differ or you are unsure, use "add" instead. Never overwrite one person's or one business's account with another's.
 - Match to an existing program when it is clearly the same account (e.g. "MileagePlus" = "United MileagePlus", "Amex MR" = "American Express Membership Rewards"). Use action "update" with its programId. Otherwise use "add".
 - If the balance shown equals the existing balance, still include it (it confirms the number is current).
 - Pending, projected, or "points earned this trip" numbers are NOT the balance. Skip them or mention them in warnings.
@@ -85,7 +86,7 @@ export default async function handler(req, res) {
 
     const data = await loadData();
     const existing = data.programs.map((p) => ({
-      id: p.id, owner: p.owner, name: p.name, kind: p.kind, balance: p.balance, unit: p.unit, tier: p.tier,
+      id: p.id, owner: p.owner, name: p.name, kind: p.kind, balance: p.balance, unit: p.unit, tier: p.tier, memberLast4: p.memberLast4,
     }));
     const existingBookings = (data.bookings || []).map((b) => ({
       id: b.id, type: b.type, provider: b.provider, title: b.title, startDate: b.startDate, confirmation: b.confirmation, owner: b.owner,
@@ -102,11 +103,23 @@ export default async function handler(req, res) {
       : await readWithOpenAI(userContent);
     if (result.error) return res.status(result.status).json({ error: result.error });
 
-    // Make sure "update" only points at programs that really exist.
-    const ids = new Set(data.programs.map((p) => p.id));
-    const changes = result.output.changes.map((c) =>
-      c.action === "update" && !ids.has(c.programId) ? { ...c, action: "add", programId: null } : c,
-    );
+    // Safety net: only "update" an existing program when it really looks like
+    // the same account. Otherwise turn it into a new account.
+    const changes = result.output.changes.map((c) => {
+      if (c.action !== "update") return c;
+      const old = data.programs.find((p) => p.id === c.programId);
+      const why = old ? differentAccount(c, old, text) : "no such program";
+      if (!why) return c;
+      const fixed = { ...c, action: "add", programId: null, reason: `${c.reason} (Added as a separate account: ${why}.)` };
+      // Don't copy the other account's name/owner onto the new one.
+      if (why === "this is a business account" && !/business/i.test(fixed.name)) fixed.name = `${fixed.name.replace(/\s*\(.*\)$/, "")} Business`;
+      if (fixed.owner && old && ownerSet(fixed.owner).size && [...ownerSet(fixed.owner)].join() === [...ownerSet(old.owner)].join() && why !== "different owner") fixed.owner = null;
+      return fixed;
+    });
+
+    // A note like "shared: Brad & Ally" in the pasted text sets the owner when there's one account.
+    const shared = String(text).match(/^\s*shared\s*:\s*([A-Za-z][A-Za-z ,&/+]*?)(?:\s*[—–-]|$)/im);
+    if (shared && changes.length === 1) changes[0].owner = shared[1].trim().replace(/\s+and\s+/i, " & ");
 
     const bookingIds = new Set((data.bookings || []).map((b) => b.id));
     const bookings = result.output.bookings.map((b) => ({
@@ -184,4 +197,28 @@ async function readWithOpenAI(userContent) {
   }
   if (!parsed.success) return { status: 502, error: "The AI reply was incomplete. Please try again." };
   return { output: parsed.data };
+}
+
+// ---------- Is this really the same account? ----------
+const BUSINESS = /\bbusiness\b|\bcorporate\b|\bcompany account\b/i;
+const ownerSet = (o) =>
+  new Set(String(o || "").toLowerCase().split(/\s*(?:&|,|\/|\+|\band\b)\s*/).map((x) => x.trim()).filter(Boolean));
+
+export function differentAccount(change, existing, pastedText = "") {
+  // Business vs personal
+  const newIsBusiness = BUSINESS.test(`${change.name} ${change.reason} ${change.evidence}`) ||
+    /aadvantage business|business account|business program|business rewards/i.test(pastedText);
+  const oldIsBusiness = BUSINESS.test(existing.name || "");
+  if (newIsBusiness !== oldIsBusiness) return newIsBusiness ? "this is a business account" : "the existing one is a business account";
+
+  // Different owners (e.g. "Brad & Ally" vs "Ally")
+  const a = ownerSet(change.owner);
+  const b = ownerSet(existing.owner);
+  if (a.size && b.size && (a.size !== b.size || [...a].some((x) => !b.has(x)))) return "different owner";
+
+  // Different account numbers
+  const n1 = String(change.memberLast4 || "").toLowerCase();
+  const n2 = String(existing.memberLast4 || "").toLowerCase();
+  if (n1 && n2 && n1 !== n2) return "different account number";
+  return null;
 }

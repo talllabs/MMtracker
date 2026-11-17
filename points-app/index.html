@@ -606,7 +606,8 @@ $("#readBtn").addEventListener("click", async () => {
     const result = await api("/api/parse", { method: "POST", body: JSON.stringify({ text }) });
     pending = result.changes.map((c) => ({ ...c, on: c.balance !== null || c.action === "add" }));
     pendingBookings = (result.bookings || []).map((b) => ({ ...b, on: true }));
-    showReview(result.warnings || []);
+    lastWarnings = result.warnings || [];
+    showReview(lastWarnings);
   } catch (e) {
     toast(e.message);
   } finally {
@@ -615,6 +616,7 @@ $("#readBtn").addEventListener("click", async () => {
   }
 });
 
+let lastWarnings = [];
 function showReview(warnings) {
   $("#pasteStep").classList.add("hidden");
   $("#reviewStep").classList.remove("hidden");
@@ -645,6 +647,7 @@ function showReview(warnings) {
             ${c.tier ? `<span class="pill never">${esc(c.tier)}</span>` : ""}
             ${c.asOf ? `<span class="pill never">as of ${esc(c.asOf)}</span>` : ""}
             <div class="reason">${esc(c.reason)}</div>
+            ${old ? `<button type="button" class="btn-chip" data-asnew="${i}" style="padding-left:0">Different account? Add as new instead</button>` : ""}
             ${c.evidence ? `<div class="quote">“${esc(c.evidence)}”</div>` : ""}
           </div>
         </label>`;
@@ -652,6 +655,18 @@ function showReview(warnings) {
   }
   updateApplyBtn();
 }
+
+$("#changes").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-asnew]");
+  if (!btn) return;
+  e.preventDefault();
+  const c = pending[Number(btn.dataset.asnew)];
+  c.action = "add";
+  c.programId = null;
+  c.on = true;
+  showReview(lastWarnings);
+  toast("Will be added as a new account. You can rename it after.");
+});
 
 $("#changes").addEventListener("change", (e) => {
   if (e.target.type !== "checkbox") return;
