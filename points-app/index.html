@@ -211,6 +211,13 @@
     background-image: linear-gradient(45deg, transparent 50%, var(--accent-ink) 50%), linear-gradient(135deg, var(--accent-ink) 50%, transparent 50%); }
   .filter-note { font-size: 14px; color: var(--muted); margin: -4px 4px 10px; }
   .filter-note button { border: 0; background: none; color: var(--accent); font-weight: 600; padding: 0 0 0 6px; font-size: 14px; }
+
+  /* "Save to" picker on the review screen */
+  .saveto { display: flex; gap: 8px; align-items: center; margin: 10px 0 4px; font-size: 14px; font-weight: 600; color: var(--muted); }
+  .saveto select { flex: 1; min-width: 0; max-width: none; text-overflow: ellipsis; }
+  .saveto select.is-new { background-color: var(--fresh-bg); color: var(--fresh); }
+  .newfields { display: grid; grid-template-columns: 1fr; gap: 8px; margin: 6px 0 8px; }
+  .newfields input { padding: 10px 12px; font-size: 15px; border-radius: 10px; }
 </style>
 </head>
 <body>
@@ -637,7 +644,8 @@ function showReview(warnings) {
         <label class="change ${c.on ? "" : "off"}" data-i="${i}">
           <input type="checkbox" ${c.on ? "checked" : ""} data-i="${i}">
           <div class="change-body">
-            <div class="change-title"><span style="display:flex;gap:10px;align-items:center">${logoHtml(old ? old.name : c.name)}${esc(old ? old.name : c.name)}${(old ? old.owner : c.owner) ? ` · ${esc(old ? old.owner : c.owner)}` : ""}</span>${old ? "" : `<span class="tag-new">NEW</span>`}</div>
+            <div class="change-title"><span style="display:flex;gap:10px;align-items:center">${logoHtml(old ? old.name : c.name)}${esc(old ? old.name : c.name)}${(old ? old.owner : c.owner) ? ` · ${esc(old ? old.owner : c.owner)}` : ""}</span>${old ? `<span class="tag-new">UPDATE</span>` : `<span class="tag-new">NEW</span>`}</div>
+            ${saveToHtml(c, i)}
             <div class="delta num">
               ${old && old.balance !== null && diff !== 0 ? `<span class="old">${fmt(old.balance)}</span>` : ""}
               ${c.balance === null ? "<span style='font-size:16px;color:var(--muted)'>No balance found</span>" : `${fmt(c.balance)} <small style="font-size:14px;font-weight:500;color:var(--muted)">${esc(c.unit)}</small>`}
@@ -647,7 +655,7 @@ function showReview(warnings) {
             ${c.tier ? `<span class="pill never">${esc(c.tier)}</span>` : ""}
             ${c.asOf ? `<span class="pill never">as of ${esc(c.asOf)}</span>` : ""}
             <div class="reason">${esc(c.reason)}</div>
-            ${old ? `<button type="button" class="btn-chip" data-asnew="${i}" style="padding-left:0">Different account? Add as new instead</button>` : ""}
+
             ${c.evidence ? `<div class="quote">“${esc(c.evidence)}”</div>` : ""}
           </div>
         </label>`;
@@ -656,16 +664,38 @@ function showReview(warnings) {
   updateApplyBtn();
 }
 
-$("#changes").addEventListener("click", (e) => {
-  const btn = e.target.closest("[data-asnew]");
-  if (!btn) return;
-  e.preventDefault();
-  const c = pending[Number(btn.dataset.asnew)];
-  c.action = "add";
-  c.programId = null;
+// "Save to" picker: you always choose which card a number goes to.
+function saveToHtml(c, i) {
+  const brand = (brandFor(c.name) || {}).name || c.name;
+  const sameBrand = state.programs.filter((p) => programBrand(p) === brand || p.id === c.programId);
+  const label = (p) => `${p.owner ? `${p.owner} – ` : ""}${p.name} (${fmt(p.balance)} now)`;
+  const options = [
+    `<option value="__new" ${c.programId ? "" : "selected"}>➕ New account</option>`,
+    ...sameBrand.map((p) => `<option value="${esc(p.id)}" ${p.id === c.programId ? "selected" : ""}>Update ${esc(label(p))}</option>`),
+  ].join("");
+  return `
+    <div class="saveto"><span>Save to</span>
+      <select class="field select-sm ${c.programId ? "" : "is-new"}" data-target="${i}" aria-label="Save to">${options}</select>
+    </div>
+    ${c.programId ? "" : `<div class="newfields">
+      <input class="field" data-edit="name" data-i="${i}" value="${esc(c.name)}" placeholder="Account name" aria-label="Account name">
+      <input class="field" data-edit="owner" data-i="${i}" value="${esc(c.owner || "")}" placeholder="Whose? e.g. Brad & Ally" aria-label="Whose account">
+    </div>`}`;
+}
+
+$("#changes").addEventListener("change", (e) => {
+  const sel = e.target.closest("[data-target]");
+  if (!sel) return;
+  const c = pending[Number(sel.dataset.target)];
+  if (sel.value === "__new") { c.action = "add"; c.programId = null; }
+  else { c.action = "update"; c.programId = sel.value; }
   c.on = true;
   showReview(lastWarnings);
-  toast("Will be added as a new account. You can rename it after.");
+});
+$("#changes").addEventListener("input", (e) => {
+  const f = e.target.closest("[data-edit]");
+  if (!f) return;
+  pending[Number(f.dataset.i)][f.dataset.edit] = f.value.trim() || null;
 });
 
 $("#changes").addEventListener("change", (e) => {
