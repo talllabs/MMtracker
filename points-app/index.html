@@ -218,6 +218,36 @@
   .saveto select.is-new { background-color: var(--fresh-bg); color: var(--fresh); }
   .newfields { display: grid; grid-template-columns: 1fr; gap: 8px; margin: 6px 0 8px; }
   .newfields input { padding: 10px 12px; font-size: 15px; border-radius: 10px; }
+
+  /* Compact top area so balances get the screen */
+  .head-row { padding: 8px 0 6px; }
+  .head-row h1 { font-size: 22px; }
+  .seg { margin: 0 0 8px; padding: 2px; }
+  .seg button { padding: 7px 0; font-size: 14px; }
+  .controls { padding-top: 4px; }
+  .filters { flex-wrap: nowrap; gap: 6px; padding-bottom: 8px; }
+  .filters .tabs { flex: 1 1 auto; }
+  .filters .select-sm { max-width: 42%; padding: 7px 28px 7px 12px; font-size: 14px; }
+  .tab { padding: 6px 12px; font-size: 14px; }
+  .tabs { padding-bottom: 8px; }
+  .accuracy { padding: 9px 12px; margin: 0 0 8px; gap: 10px; align-items: center; border-radius: 12px; box-shadow: none; background: var(--surface); }
+  .accuracy .big-dot { width: 10px; height: 10px; margin-top: 0; }
+  .accuracy .acc-text { min-width: 0; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .accuracy .acc-text strong { display: inline; font-size: 14px; }
+  .accuracy .acc-text span { color: var(--muted); font-size: 14px; }
+  #tripSummary strong { font-size: 14px; }
+  #tripSummary span { font-size: 13px; }
+  .group-title { margin: 12px 4px 6px; }
+
+  /* One compact row per account: logo · name · balance */
+  #list .card { padding: 12px 14px; margin-bottom: 8px; }
+  #list .card-head > .card-balance { flex: none; margin: 0; text-align: right; font-size: 21px; line-height: 1.1; }
+  #list .card-head > .card-balance small { display: block; margin: 2px 0 0; font-size: 12px; }
+  #list .card-head > .card-balance.unknown { font-size: 18px; }
+  #list .card-name { font-size: 16px; }
+  #list .meta { margin-top: 8px; padding-left: 52px; gap: 6px; }
+  #list .meta .pill { font-size: 12px; padding: 2px 8px; }
+  #list .meta .sub { font-size: 12px; }
 </style>
 </head>
 <body>
@@ -246,6 +276,10 @@
         <button data-view="points" aria-pressed="true">⭐ Points</button>
         <button data-view="trips" aria-pressed="false">🧳 Trips</button>
       </div>
+    </div>
+  </header>
+
+  <div class="wrap controls">
       <div class="filters" id="filters">
         <div class="tabs" id="personTabs" role="toolbar" aria-label="Whose accounts"></div>
         <select class="field select-sm" id="brandFilter" aria-label="Company"></select>
@@ -268,8 +302,7 @@
           <button class="tab" data-tfilter="cancelled" aria-pressed="false">Cancelled</button>
         </div>
       </div>
-    </div>
-  </header>
+  </div>
 
   <main class="wrap">
     <div id="list"></div>
@@ -523,8 +556,8 @@ function cardHtml(p) {
           <div class="card-name">${esc(p.name)}</div>
           ${tierBits ? `<div class="card-tier">${esc(tierBits)}</div>` : ""}
         </div>
+        <div class="card-balance num ${p.balance === null ? "unknown" : ""}">${p.balance === null ? "—" : fmt(p.balance)}${p.balance === null ? "" : `<small>${esc(p.unit)}</small>`}</div>
       </div>
-      <div class="card-balance num ${p.balance === null ? "unknown" : ""}">${p.balance === null ? "No balance yet" : fmt(p.balance)}${p.balance === null ? "" : `<small>${esc(p.unit)}</small>`}</div>
       <div class="meta">
         <span class="pill ${f.key}"><span class="dot"></span>${f.label}</span>
         ${conf}
@@ -544,19 +577,14 @@ function renderAccuracy(ps = state.programs) {
   const needs = ps.length - counts.fresh;
   const oldest = ps.map((p) => ({ p, f: freshness(p) })).sort((a, b) => b.f.days - a.f.days)[0];
   const color = counts.stale || counts.never ? "var(--stale)" : counts.aging ? "var(--aging)" : "var(--fresh)";
-  const headline = needs === 0 ? (ps.length === 1 ? "This balance is up to date" : `All ${ps.length} balances are up to date`) : `${counts.fresh} of ${ps.length} up to date`;
-  let detail = `Last change ${ago(state.updatedAt)}`;
+  const headline = needs === 0 ? (ps.length === 1 ? "Up to date" : `All ${ps.length} up to date`) : `${counts.fresh} of ${ps.length} up to date`;
+  let detail = `updated ${ago(state.updatedAt)}`;
   if (needs) {
     detail = oldest.f.days === Infinity
-      ? `${esc(oldest.p.name)} has never been confirmed`
-      : `Oldest: ${esc(oldest.p.name)}, ${oldest.f.days} days old`;
+      ? `${esc(oldest.p.name)} never confirmed`
+      : `oldest: ${esc(oldest.p.name)}, ${oldest.f.days}d`;
   }
-  el.innerHTML = `<div class="big-dot" style="background:${color}"></div><div style="min-width:0"><strong>${headline}</strong><span>${detail}</span>
-    <div class="legend">
-      <span class="pill fresh"><span class="dot"></span>≤ 7 days</span>
-      <span class="pill aging"><span class="dot"></span>8–30 days</span>
-      <span class="pill stale"><span class="dot"></span>30+ days</span>
-    </div></div>`;
+  el.innerHTML = `<div class="big-dot" style="background:${color}"></div><div class="acc-text"><strong>${headline}</strong><span> · ${detail}</span></div>`;
 }
 
 // ---------- Saving ----------
@@ -1044,9 +1072,8 @@ function renderTrips() {
     const soon = deadlines[0];
     const color = soon && daysUntil(soon.cancelBy) <= 3 ? "var(--stale)" : soon && daysUntil(soon.cancelBy) <= 14 ? "var(--aging)" : "var(--fresh)";
     sum.innerHTML = `<div class="big-dot" style="background:${color}"></div><div style="min-width:0">
-      <strong>${upcoming.length} upcoming trip${upcoming.length === 1 ? "" : "s"}</strong>
-      <span>${next ? `Next: ${esc(next.title)}, ${whenText(daysUntil(next.startDate))}` : "No dates yet"}</span>
-      ${soon ? `<span style="display:block">Next cancel deadline: ${esc(soon.title)}, ${niceDate(soon.cancelBy, false)} (${whenText(daysUntil(soon.cancelBy))})</span>` : ""}
+      <div class="acc-text"><strong>${upcoming.length} upcoming</strong><span>${next ? ` · next ${esc(next.title)} ${whenText(daysUntil(next.startDate))}` : ""}</span></div>
+      ${soon ? `<div class="acc-text"><span style="color:${color}">Cancel-by: ${esc(soon.title)} · ${whenText(daysUntil(soon.cancelBy))}</span></div>` : ""}
     </div>`;
   }
 
